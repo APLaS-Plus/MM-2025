@@ -5,7 +5,7 @@ from utils.base import *
 from utils.geo import *
 
 
-def Q2_cal_mask_time(input_data):
+def simgle_cal_mask_time(input_data):
     # unzip input data
     f1_vx, drop_t, bomb_t = input_data
 
@@ -106,25 +106,34 @@ def Q2_cal_mask_time(input_data):
     # origin_intervals = sp.solveset(origin_cond, t, domain=t_domain)  # 原点在球内
     M_intervals = sp.solveset(M_cond, t, domain=t_domain)  # 导弹在球内
 
-    return (proj_intervals | M_intervals).measure
+    return proj_intervals | M_intervals
 
 
-Q2_constraint_ueq = lambda x: 70.0 <= x[0] <= 140.0 and x[2] > x[1]
+def Q3_cal_mask_time(input_data):
+    f1_vx, drop_t1, bomb_t1, drop_t2, bomb_t2, drop_t3, bomb_t3 = input_data
+    mask_time1 = simgle_cal_mask_time((f1_vx, drop_t1, bomb_t1))
+    mask_time2 = simgle_cal_mask_time((f1_vx, drop_t2, bomb_t2))
+    mask_time3 = simgle_cal_mask_time((f1_vx, drop_t3, bomb_t3))
+    return (mask_time1 | mask_time2 | mask_time3).measure
 
 
-def Q2_cal_mask_time_optimized(input_data):
+Q3_constraint_ueq = lambda x: 70.0 <= x[0] <= 140.0 and x[2] > x[1] and x[4] > x[3] and x[6] > x[5]
+
+
+def Q3_cal_mask_time_optimized(input_data):
     """
-    优化版本的烟幕遮蔽时间计算函数
+    优化版本的Q3烟幕遮蔽时间计算函数
     使用纯数值计算替代符号计算，大幅提升性能
+    处理3个烟幕球的情况
 
     Args:
-        input_data: (f1_vx, drop_t, bomb_t)
+        input_data: (f1_vx, drop_t1, bomb_t1, drop_t2, bomb_t2, drop_t3, bomb_t3)
 
     Returns:
-        遮蔽时间长度 (秒)
+        总遮蔽时间长度 (秒)
     """
     # unzip input data
-    f1_vx, drop_t, bomb_t = input_data
+    f1_vx, drop_t1, bomb_t1, drop_t2, bomb_t2, drop_t3, bomb_t3 = input_data
 
     # define FY1 and M1
     FY1_init_position = DRONES_INITIAL["FY1"]
@@ -133,53 +142,73 @@ def Q2_cal_mask_time_optimized(input_data):
     M1_init_position = MISSILES_INITIAL["M1"]
     M1_V = calculate_velocity_vector(M1_init_position, FAKE_TARGET, MISSILE_SPEED)
 
-    # cal drop time
-    drop_position = calculate_position_with_velocity(FY1_init_position, f1_V, drop_t)
-
-    # cal bomb time
-    bomb_position = calculate_parabolic_trajectory(drop_position, f1_V, bomb_t)
-    M1_position = calculate_position_with_velocity(
-        M1_init_position, M1_V, drop_t + bomb_t
-    )
+    # 计算3个烟幕球的位置和导弹在各个时刻的位置
+    smoke_balls = []
+    for drop_t, bomb_t in [(drop_t1, bomb_t1), (drop_t2, bomb_t2), (drop_t3, bomb_t3)]:
+        drop_position = calculate_position_with_velocity(
+            FY1_init_position, f1_V, drop_t
+        )
+        bomb_position = calculate_parabolic_trajectory(drop_position, f1_V, bomb_t)
+        M1_position = calculate_position_with_velocity(
+            M1_init_position, M1_V, drop_t + bomb_t
+        )
+        smoke_balls.append(
+            {
+                "bomb_position": bomb_position,
+                "M1_position": M1_position,
+                "total_time": drop_t + bomb_t,
+            }
+        )
 
     R = SMOKE_EFFECTIVE_RADIUS
 
     def check_intersection_at_time(t):
         """
-        检查在时刻t是否满足线段与球体相交条件
-        实现与Q2_cal_mask_time相同的几何逻辑
+        检查在时刻t是否满足线段与任一烟幕球相交条件
+        实现与Q3_cal_mask_time相同的几何逻辑
         """
         if t < 0:
             return False
 
-        # 导弹在时刻t的位置 (Mt)
-        Mt = M1_position + M1_V * t
-        # 烟幕球心在时刻t的位置 (St)
-        St = bomb_position - np.array([0, 0, SMOKE_SINK_SPEED * t])
+        # 检查是否与任一烟幕球相交
+        for smoke_ball in smoke_balls:
+            # 调整时间：烟幕球从爆炸时刻开始存在
+            smoke_t = t - smoke_ball["total_time"]
+            if smoke_t < 0:
+                continue  # 烟幕球还未爆炸
 
-        # 计算几何参数
-        Mt_pow2 = np.dot(Mt, Mt)  # |Mt|² - 导弹位置向量模长平方
-        StMt = np.dot(St, Mt)  # St·Mt - 烟幕球心与导弹位置的点积
-        St_pow2 = np.dot(St, St)  # |St|² - 烟幕球心位置向量模长平方
+            # 导弹在时刻t的位置 (Mt)
+            Mt = smoke_ball["M1_position"] + M1_V * smoke_t
+            # 烟幕球心在时刻t的位置 (St) - 从爆炸位置开始下沉
+            St = smoke_ball["bomb_position"] - np.array(
+                [0, 0, SMOKE_SINK_SPEED * smoke_t]
+            )
 
-        if Mt_pow2 < 1e-12:  # 导弹在原点的特殊情况
-            return np.sqrt(St_pow2) <= R
+            # 计算几何参数
+            Mt_pow2 = np.dot(Mt, Mt)  # |Mt|² - 导弹位置向量模长平方
+            StMt = np.dot(St, Mt)  # St·Mt - 烟幕球心与导弹位置的点积
+            St_pow2 = np.dot(St, St)  # |St|² - 烟幕球心位置向量模长平方
 
-        # 线段上距离球心最近的点的参数
-        u = StMt / Mt_pow2
+            if Mt_pow2 < 1e-12:  # 导弹在原点的特殊情况
+                if np.sqrt(St_pow2) <= R:
+                    return True
+                continue
 
-        # 情况1：线段投影相交（最常见情况）
-        # 要求：u ∈ [0,1] 且 线段到球心的最短距离 ≤ R
-        if 0 <= u <= 1:
-            # 线段到球心的最短距离平方 = |St|² - (St·Mt)²/|Mt|²
-            dist_sq = St_pow2 - (StMt**2 / Mt_pow2)
-            if dist_sq <= R**2:
+            # 线段上距离球心最近的点的参数
+            u = StMt / Mt_pow2
+
+            # 情况1：线段投影相交（最常见情况）
+            # 要求：u ∈ [0,1] 且 线段到球心的最短距离 ≤ R
+            if 0 <= u <= 1:
+                # 线段到球心的最短距离平方 = |St|² - (St·Mt)²/|Mt|²
+                dist_sq = St_pow2 - (StMt**2 / Mt_pow2)
+                if dist_sq <= R**2:
+                    return True
+
+            # 情况2：u>1, 终点（导弹位置）在球内
+            Mt_St_diff = Mt - St  # Mt - St 向量
+            if np.dot(Mt_St_diff, Mt_St_diff) <= R**2:  # |Mt - St|² ≤ R²
                 return True
-
-        # 情况2：u>1, 终点（导弹位置）在球内
-        Mt_St_diff = Mt - St  # Mt - St 向量
-        if np.dot(Mt_St_diff, Mt_St_diff) <= R**2:  # |Mt - St|² ≤ R²
-            return True
 
         return False
 
@@ -187,7 +216,9 @@ def Q2_cal_mask_time_optimized(input_data):
         """
         数值方法寻找所有相交时间区间
         """
-        max_time = SMOKE_EFFECTIVE_TIME
+        max_time = SMOKE_EFFECTIVE_TIME + max(
+            smoke_ball["total_time"] for smoke_ball in smoke_balls
+        )
         dt = 0.01  # 初始时间步长
 
         # 粗扫描找到可能的相交区间

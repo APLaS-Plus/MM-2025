@@ -3,7 +3,7 @@ from sko.tools import set_run_mode
 import numpy as np
 import math
 import matplotlib.pyplot as plt
-from utils.cal_mask_time import Q2_cal_mask_time_optimized, Q2_constraint_ueq
+from utils.Q1Q2cal_mask_time import Q2_cal_mask_time_optimized, Q2_constraint_ueq
 from utils.base import *
 from utils.geo import *
 
