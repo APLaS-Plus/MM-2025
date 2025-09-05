@@ -109,7 +109,7 @@ def Q2_cal_mask_time(input_data):
     return (proj_intervals | M_intervals).measure
 
 
-Q2_constraint_ueq = lambda x: 70 <= x[0] <= 140 and x[2] > x[1]
+Q2_constraint_ueq = lambda x: 70.0 <= x[0] <= 140.0 and x[2] > x[1]
 
 
 def Q2_cal_mask_time_optimized(input_data):
