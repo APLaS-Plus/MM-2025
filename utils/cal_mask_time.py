@@ -7,11 +7,11 @@ from utils.geo import *
 
 def Q2_cal_mask_time(input_data):
     # unzip input data
-    f1_vx, f1_vy, drop_t, bomb_t = input_data
+    f1_vx, drop_t, bomb_t = input_data
 
     # define FY1 and M1
     FY1_init_position = DRONES_INITIAL["FY1"]
-    f1_V = np.array([f1_vx, f1_vy, 0])
+    f1_V = np.array([f1_vx, 0, 0])
 
     M1_init_position = MISSILES_INITIAL["M1"]
     M1_V = calculate_velocity_vector(M1_init_position, FAKE_TARGET, MISSILE_SPEED)
@@ -34,15 +34,18 @@ def Q2_cal_mask_time(input_data):
         M1_position[2] + M1_V[2] * t,
     )
 
-# 烟幕球心在时刻t的位置（垂直下沉）
-    Sx, Sy, Sz = bomb_position[0], bomb_position[1], bomb_position[2] - SMOKE_SINK_SPEED * t
+    # 烟幕球心在时刻t的位置（垂直下沉）
+    Sx, Sy, Sz = (
+        bomb_position[0],
+        bomb_position[1],
+        bomb_position[2] - SMOKE_SINK_SPEED * t,
+    )
 
     # 位置向量
     Mxv = sp.Matrix([Mx, My, Mz])  # 导弹位置向量
     Sv = sp.Matrix([Sx, Sy, Sz])  # 烟幕球心位置向量
 
     # print(f"Mxv: {Mxv}, Sv: {Sv}")
-
 
     # ================== 线段与球体相交的数学公式 ==================
     # 设线段为 P(s) = s * Mt，s ∈ [0,1]
@@ -106,7 +109,7 @@ def Q2_cal_mask_time(input_data):
     return (proj_intervals | M_intervals).measure
 
 
-Q2_constraint_ueq = lambda x: 70**2 <= x[0] ** 2 + x[1] ** 2 <= 140**2 and x[3] > x[2]
+Q2_constraint_ueq = lambda x: 70 <= x[0] <= 140 and x[2] > x[1]
 
 
 def Q2_cal_mask_time_optimized(input_data):
@@ -115,17 +118,17 @@ def Q2_cal_mask_time_optimized(input_data):
     使用纯数值计算替代符号计算，大幅提升性能
 
     Args:
-        input_data: (f1_vx, f1_vy, drop_t, bomb_t)
+        input_data: (f1_vx, drop_t, bomb_t)
 
     Returns:
         遮蔽时间长度 (秒)
     """
     # unzip input data
-    f1_vx, f1_vy, drop_t, bomb_t = input_data
+    f1_vx, drop_t, bomb_t = input_data
 
     # define FY1 and M1
     FY1_init_position = DRONES_INITIAL["FY1"]
-    f1_V = np.array([f1_vx, f1_vy, 0])
+    f1_V = np.array([f1_vx, 0, 0])
 
     M1_init_position = MISSILES_INITIAL["M1"]
     M1_V = calculate_velocity_vector(M1_init_position, FAKE_TARGET, MISSILE_SPEED)
@@ -139,60 +142,109 @@ def Q2_cal_mask_time_optimized(input_data):
         M1_init_position, M1_V, drop_t + bomb_t
     )
 
-    # 数值计算优化版本
-    # 导弹轨迹: P(t) = M1_position + M1_V * t
-    # 烟幕球心: B(t) = bomb_position + [0, 0, -SMOKE_SINK_SPEED * t]
-    # 相交条件: |P(t) - B(t)| <= R
-
-    # 计算相对位置和速度
-    relative_pos = M1_position - bomb_position  # 在t=0时导弹相对烟幕球心的位置
-    relative_vel = M1_V - np.array([0, 0, -SMOKE_SINK_SPEED])  # 导弹相对烟幕球心的速度
-
     R = SMOKE_EFFECTIVE_RADIUS
 
-    # 相交条件转换为二次不等式: |relative_pos + relative_vel * t|² <= R²
-    # 展开: (relative_pos + relative_vel * t) · (relative_pos + relative_vel * t) <= R²
-    # 得到: ||relative_pos||² + 2*(relative_pos · relative_vel)*t + ||relative_vel||²*t² <= R²
-    # 重排: ||relative_vel||²*t² + 2*(relative_pos · relative_vel)*t + (||relative_pos||² - R²) <= 0
+    def check_intersection_at_time(t):
+        """
+        检查在时刻t是否满足线段与球体相交条件
+        实现与Q2_cal_mask_time相同的几何逻辑
+        """
+        if t < 0:
+            return False
 
-    a = np.dot(relative_vel, relative_vel)  # ||relative_vel||²
-    b = 2 * np.dot(relative_pos, relative_vel)  # 2*(relative_pos · relative_vel)
-    c = np.dot(relative_pos, relative_pos) - R**2  # ||relative_pos||² - R²
+        # 导弹在时刻t的位置 (Mt)
+        Mt = M1_position + M1_V * t
+        # 烟幕球心在时刻t的位置 (St)
+        St = bomb_position - np.array([0, 0, SMOKE_SINK_SPEED * t])
 
-    # 求解二次不等式 at² + bt + c <= 0
-    if abs(a) < 1e-12:  # 相对速度为0的情况
-        if c <= 0:  # 导弹始终在球内
-            return float("inf")
-        else:  # 导弹始终在球外
-            return 0.0
+        # 计算几何参数
+        Mt_pow2 = np.dot(Mt, Mt)  # |Mt|² - 导弹位置向量模长平方
+        StMt = np.dot(St, Mt)  # St·Mt - 烟幕球心与导弹位置的点积
+        St_pow2 = np.dot(St, St)  # |St|² - 烟幕球心位置向量模长平方
 
-    # 计算判别式
-    discriminant = b**2 - 4 * a * c
+        if Mt_pow2 < 1e-12:  # 导弹在原点的特殊情况
+            return np.sqrt(St_pow2) <= R
 
-    if discriminant < 0:  # 无实根，不相交
-        return 0.0
+        # 线段上距离球心最近的点的参数
+        u = StMt / Mt_pow2
 
-    # 求解二次方程的根
-    sqrt_discriminant = np.sqrt(discriminant)
-    t1 = (-b - sqrt_discriminant) / (2 * a)
-    t2 = (-b + sqrt_discriminant) / (2 * a)
+        # 情况1：线段投影相交（最常见情况）
+        # 要求：u ∈ [0,1] 且 线段到球心的最短距离 ≤ R
+        if 0 <= u <= 1:
+            # 线段到球心的最短距离平方 = |St|² - (St·Mt)²/|Mt|²
+            dist_sq = St_pow2 - (StMt**2 / Mt_pow2)
+            if dist_sq <= R**2:
+                return True
 
-    # 确保t1 <= t2
-    if t1 > t2:
-        t1, t2 = t2, t1
+        # 情况2：u>1, 终点（导弹位置）在球内
+        Mt_St_diff = Mt - St  # Mt - St 向量
+        if np.dot(Mt_St_diff, Mt_St_diff) <= R**2:  # |Mt - St|² ≤ R²
+            return True
 
-    # 只考虑t >= 0的时间段
-    t_start = max(0, t1)
-    t_end = max(0, t2)
+        return False
 
-    if t_end <= t_start:
-        return 0.0
+    def find_intersection_intervals():
+        """
+        数值方法寻找所有相交时间区间
+        """
+        max_time = SMOKE_EFFECTIVE_TIME
+        dt = 0.01  # 初始时间步长
 
-    # 额外检查：确保在有效遮蔽时间内
-    effective_time = SMOKE_EFFECTIVE_TIME
-    t_end = min(t_end, effective_time)
+        # 粗扫描找到可能的相交区间
+        time_points = np.arange(0, max_time, dt)
+        intersections = [check_intersection_at_time(t) for t in time_points]
 
-    if t_end <= t_start:
-        return 0.0
+        # 找到相交区间的粗略边界
+        intervals = []
+        in_intersection = False
+        start_idx = 0
 
-    return t_end - t_start
+        for i, is_intersect in enumerate(intersections):
+            if is_intersect and not in_intersection:
+                # 开始相交
+                in_intersection = True
+                start_idx = i
+            elif not is_intersect and in_intersection:
+                # 结束相交
+                in_intersection = False
+                intervals.append((start_idx, i - 1))
+
+        # 处理最后一个区间
+        if in_intersection:
+            intervals.append((start_idx, len(intersections) - 1))
+
+        # 精确化区间边界
+        total_time = 0.0
+        fine_dt = 0.0001  # 精确搜索步长
+
+        for start_idx, end_idx in intervals:
+            # 精确寻找区间起始点
+            coarse_start = max(0, time_points[start_idx] - dt)
+            coarse_end = min(max_time, time_points[end_idx] + dt)
+
+            # 二分法精确定位起始边界
+            left, right = coarse_start, coarse_start + 2 * dt
+            while right - left > fine_dt:
+                mid = (left + right) / 2
+                if check_intersection_at_time(mid):
+                    right = mid
+                else:
+                    left = mid
+            precise_start = right
+
+            # 二分法精确定位结束边界
+            left, right = coarse_end - 2 * dt, coarse_end
+            while right - left > fine_dt:
+                mid = (left + right) / 2
+                if check_intersection_at_time(mid):
+                    left = mid
+                else:
+                    right = mid
+            precise_end = left
+
+            if precise_end > precise_start:
+                total_time += precise_end - precise_start
+
+        return total_time
+
+    return find_intersection_intervals()
