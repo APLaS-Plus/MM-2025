@@ -172,8 +172,11 @@ def calculate_velocity_vector(start_point, target_point, speed):
         velocity_vector: 速度向量 np.array([vx, vy, vz])
         如果起始点和目标点重合，返回零向量
     """
+    tp = target_point.copy()
+    sp = start_point.copy()
+    
     # 计算方向向量
-    direction = target_point - start_point
+    direction = tp - sp
 
     # 计算距离
     distance = np.linalg.norm(direction)
@@ -203,7 +206,9 @@ def calculate_position_with_velocity(initial_position, velocity_vector, time):
     Returns:
         current_position: 当前位置坐标 np.array([x, y, z])
     """
-    return initial_position + velocity_vector * time
+    ip = initial_position.copy()
+    vv = velocity_vector.copy()
+    return ip + vv * time
 
 
 def calculate_parabolic_trajectory(initial_position, initial_velocity, time, g=9.8):
@@ -221,11 +226,13 @@ def calculate_parabolic_trajectory(initial_position, initial_velocity, time, g=9
     """
     # 水平方向匀速运动
     # 垂直方向受重力影响做匀加速运动
-    current_position = initial_position.copy()
-    current_position[0] = initial_position[0] + initial_velocity[0] * time  # x方向
-    current_position[1] = initial_position[1] + initial_velocity[1] * time  # y方向
+    ip = initial_position.copy()
+    iv = initial_velocity.copy()
+    current_position = ip.copy()
+    current_position[0] = ip[0] + iv[0] * time  # x方向
+    current_position[1] = ip[1] + iv[1] * time  # y方向
     current_position[2] = (
-        initial_position[2] + initial_velocity[2] * time - 0.5 * g * time**2
+        ip[2] + iv[2] * time - 0.5 * g * time**2
     )  # z方向
 
     return current_position
