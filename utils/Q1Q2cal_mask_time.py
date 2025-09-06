@@ -48,65 +48,43 @@ def Q2_cal_mask_time(input_data):
     # print(f"Mxv: {Mxv}, Sv: {Sv}")
 
     # ================== 线段与球体相交的数学公式 ==================
-    # 设线段为 P(s) = s * Mt，s ∈ [0,1]
-    # 球心到线段的最短距离平方 = |St - proj(St, Mt)|²
-    # 其中 proj(St, Mt) = (St·Mt / Mt·Mt) * Mt
+    # 线段参数方程：P(s) = T + s * (Mt - T) = T + s * D，其中：
+    # T = true_target（真目标）
+    # D = Mt - T（方向向量，从真目标指向导弹）
+    # E = T - St（真目标到球心向量）
+    #
+    # 相交条件：|P(s) - St|² ≤ R²
+    # 即：|T + s*D - St|² = |E + s*D|² ≤ R²
+    # 展开：s²|D|² + 2s(E·D) + |E|² ≤ R²
 
-    Mt_pow2 = (Mxv.dot(Mxv)).simplify()  # |Mt|² - 导弹位置向量模长平方
-    StMt = (Sv.dot(Mxv)).simplify()  # St·Mt - 烟幕球心与导弹位置的点积
-    St_pow2 = (Sv.dot(Sv)).simplify()  # |St|² - 烟幕球心位置向量模长平方
+    true_target = sp.Matrix(TRUE_TARGET_CENTER.copy())  # 真目标位置向量
+
+    D_vec = Mxv - true_target  # 方向向量（从真目标指向导弹）
+    E_vec = true_target - Sv  # 真目标到球心向量
+
+    # 计算二次不等式系数
+    D_dot_D = D_vec.dot(D_vec).simplify()  # |D|²
+    E_dot_D = E_vec.dot(D_vec).simplify()  # E·D
+    E_dot_E = E_vec.dot(E_vec).simplify()  # |E|²
+
     R = SMOKE_EFFECTIVE_RADIUS  # 烟幕有效遮蔽半径
 
-    # 离路径距离
-    d = Sv.cross(Mxv).norm() / Mxv.norm()
+    # 二次不等式：s²|D|² + 2s(E·D) + |E|² - R² ≤ 0
+    # 设 a = |D|², b = 2(E·D), c = |E|² - R²
+    a_coeff = D_dot_D
+    b_coeff = 2 * E_dot_D
+    c_coeff = E_dot_E - R**2
 
-    # 线段上距离球心最近的点的参数
-    u = StMt / Mt_pow2  # 如果u∈[0,1]，则最近点在线段上；否则最近点是线段端点
+    # 求解二次不等式的判别式
+    discriminant = b_coeff**2 - 4 * a_coeff * c_coeff
 
-    # 提取系数并转换为精确的有理数表示
-    Mt_pow2_coeffs = sp.Poly(Mt_pow2, t).all_coeffs()
-    StMt_coeffs = sp.Poly(StMt, t).all_coeffs()
+    # 相交条件：判别式 ≥ 0
+    intersection_condition = discriminant >= 0
 
-    # 重新构建精确的表达式
-    Mt_pow2_exact = sum(
-        Rational(str(float(coeff))) * t ** (len(Mt_pow2_coeffs) - 1 - i)
-        for i, coeff in enumerate(Mt_pow2_coeffs)
-    )
-    StMt_exact = sum(
-        Rational(str(float(coeff))) * t ** (len(StMt_coeffs) - 1 - i)
-        for i, coeff in enumerate(StMt_coeffs)
-    )
+    # 求解相交时间区间
+    intersection_intervals = sp.solveset(intersection_condition, t, domain=t_domain)
 
-    u = StMt_exact / Mt_pow2_exact  # 使用精确表达式
-
-    # ================== 相交条件分析 ==================
-    # 线段与球体相交需要满足以下任一条件：
-    u_cond1 = u >= 0
-    u_cond2 = u <= 1
-
-    # 条件1：线段投影相交（最常见情况）
-    # 要求：u ∈ [0,1] 且 线段到球心的最短距离 ≤ R
-    proj_cond = St_pow2 - (StMt**2 / Mt_pow2) <= R**2
-
-    # 条件2：u<0, 起点（原点）在球内，不合理于是不考虑
-    # origin_cond = c <= R**2  # |St|² ≤ R²，即原点到球心距离 ≤ R
-
-    # 条件3：u>1, 终点（导弹位置）在球内
-    M_cond = (Sv - Mxv).dot(Sv - Mxv) <= R**2  # |St - Mt|² ≤ R²
-
-    # ================== 求解时间区间 ==================
-
-    # 求解几何相交条件
-    u_intervals1 = sp.solveset(u_cond1, t, domain=t_domain)
-    u_intervals2 = sp.solveset(u_cond2, t, domain=t_domain)
-
-    proj_intervals = sp.solveset(
-        proj_cond, t, domain=u_intervals1 & u_intervals2
-    )  # 线段与球相交
-    # origin_intervals = sp.solveset(origin_cond, t, domain=t_domain)  # 原点在球内
-    M_intervals = sp.solveset(M_cond, t, domain=t_domain)  # 导弹在球内
-
-    return (proj_intervals | M_intervals).measure
+    return intersection_intervals.measure
 
 
 Q2_constraint_ueq = lambda x: 70.0 <= x[0] <= 140.0 and x[2] > x[1]
@@ -157,31 +135,59 @@ def Q2_cal_mask_time_optimized(input_data):
         # 烟幕球心在时刻t的位置 (St)
         St = bomb_position - np.array([0, 0, SMOKE_SINK_SPEED * t])
 
-        # 计算几何参数
-        Mt_pow2 = np.dot(Mt, Mt)  # |Mt|² - 导弹位置向量模长平方
-        StMt = np.dot(St, Mt)  # St·Mt - 烟幕球心与导弹位置的点积
-        St_pow2 = np.dot(St, St)  # |St|² - 烟幕球心位置向量模长平方
+        # 真目标位置
+        true_target = np.array(TRUE_TARGET_CENTER)
 
-        if Mt_pow2 < 1e-12:  # 导弹在原点的特殊情况
-            return np.sqrt(St_pow2) <= R
+        # 线段参数方程：P(s) = T + s * (Mt - T) = T + s * D
+        # 相交条件：|T + s*D - St|² ≤ R²
+        # 即：s²|D|² + 2s(E·D) + |E|² ≤ R²
 
-        # 线段上距离球心最近的点的参数
-        u = StMt / Mt_pow2
+        D = Mt - true_target  # 方向向量（从真目标指向导弹）
+        E = true_target - St  # 真目标到球心向量
 
-        # 情况1：线段投影相交（最常见情况）
-        # 要求：u ∈ [0,1] 且 线段到球心的最短距离 ≤ R
-        if 0 <= u <= 1:
-            # 线段到球心的最短距离平方 = |St|² - (St·Mt)²/|Mt|²
-            dist_sq = St_pow2 - (StMt**2 / Mt_pow2)
-            if dist_sq <= R**2:
-                return True
+        # 计算二次不等式系数
+        D_dot_D = np.dot(D, D)  # |D|²
+        E_dot_D = np.dot(E, D)  # E·D
+        E_dot_E = np.dot(E, E)  # |E|²
 
-        # 情况2：u>1, 终点（导弹位置）在球内
-        Mt_St_diff = Mt - St  # Mt - St 向量
-        if np.dot(Mt_St_diff, Mt_St_diff) <= R**2:  # |Mt - St|² ≤ R²
-            return True
+        # 二次不等式：s²|D|² + 2s(E·D) + |E|² - R² ≤ 0
+        # 设 a = |D|², b = 2(E·D), c = |E|² - R²
+        a = D_dot_D
+        b = 2 * E_dot_D
+        c = E_dot_E - R**2
 
-        return False
+        if abs(a) < 1e-12:  # 线性情况：导弹与真目标重合
+            if abs(b) < 1e-12:
+                # 常数情况：检查真目标是否在球内
+                return c <= 0
+            else:
+                # 线性不等式：bs + c ≤ 0
+                s_critical = -c / b
+                return 0 <= s_critical <= 1 and c <= 0
+
+        # 二次不等式情况
+        discriminant = b**2 - 4 * a * c
+
+        if discriminant < 0:
+            # 判别式小于0，无实数解
+            return False
+
+        # 计算二次不等式的解区间
+        sqrt_discriminant = np.sqrt(discriminant)
+        s1 = (-b - sqrt_discriminant) / (2 * a)
+        s2 = (-b + sqrt_discriminant) / (2 * a)
+
+        # 确保s1 <= s2
+        if s1 > s2:
+            s1, s2 = s2, s1
+
+        # 检查解区间是否与[0,1]有交集
+        if a > 0:
+            # 开口向上，不等式解为[s1, s2]
+            return s1 <= 1 and s2 >= 0
+        else:
+            # 开口向下，不等式解为(-∞, s1] ∪ [s2, +∞)
+            return s1 >= 0 or s2 <= 1
 
     def find_intersection_intervals():
         """
