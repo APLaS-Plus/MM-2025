@@ -117,13 +117,12 @@ def Q3_cal_mask_time(input_data):
     return (mask_time1 | mask_time2 | mask_time3).measure
 
 
-Q3_constraint_ueq = lambda x: 70.0 <= x[0] <= 140.0 and x[2] > x[1] and x[4] > x[3] and x[6] > x[5]
+Q3_constraint_ueq = lambda x: 70.0 <= abs(x[0]) <= 140.0 and x[2] >= x[1] and x[4] >= x[3] and x[6] >= x[5] and sum(x[1:7]) <= 66.99917080747261
 
 
 def Q3_cal_mask_time_optimized(input_data):
     """
     优化版本的Q3烟幕遮蔽时间计算函数
-    使用纯数值计算替代符号计算，大幅提升性能
     处理3个烟幕球的情况
 
     Args:
@@ -132,6 +131,8 @@ def Q3_cal_mask_time_optimized(input_data):
     Returns:
         总遮蔽时间长度 (秒)
     """
+    # if not Q3_constraint_ueq(input_data):
+    #     return 0
     # unzip input data
     f1_vx, drop_t1, bomb_t1, drop_t2, bomb_t2, drop_t3, bomb_t3 = input_data
 

@@ -19,14 +19,17 @@ from utils.geo import *
 #   - 起爆间隔: 需优化
 # ====================================================
 
+# Q2
+#  Vx, drop, bomb: [140.           0.33567918   0.33562715]
+
 # FY1无人机飞行速度 (m/s) - 题目1中为120，题目2中需要优化在[70,140]范围内
-TEST_FY1_SPEED = -120
+TEST_FY1_SPEED = 140
 
 # 受领任务后投放烟幕弹的时间 (s) - 题目1中为1.5秒，题目2中需要优化
-TEST_LAUNCH_TIME = 1.5
+TEST_LAUNCH_TIME = 0.33567918
 
 # 投放后到起爆的时间间隔 (s) - 题目1中为3.6秒，题目2中需要优化
-TEST_IGNITE_INTERVAL = 3.6
+TEST_IGNITE_INTERVAL = 0.33562715
 
 print(f"=== 当前测试参数 ===")
 print(f"FY1飞行速度: {TEST_FY1_SPEED} m/s")
@@ -55,7 +58,7 @@ print(f"M1_V: {M1_V}")
 FY1_position = calculate_position_with_velocity(
     FY1_init_position, FY1_V, TEST_LAUNCH_TIME
 )
-print(f"FY1_position: {FY1_position}")
+print(f"drop_position: {FY1_position}")
 # 起爆时刻的导弹位置
 M1_position = calculate_position_with_velocity(
     M1_init_position, M1_V, TEST_LAUNCH_TIME + TEST_IGNITE_INTERVAL

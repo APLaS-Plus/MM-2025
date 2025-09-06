@@ -21,7 +21,7 @@ ueq = (Q3_constraint_ueq,)
 # print(type(ueq))
 
 set_run_mode(func, "multiprocessing")
-pso = PSO(func=func, n_dim=7, pop=90, max_iter=800, lb=lb, ub=ub, constraint_ueq=ueq, c1=2, c2=2, w=0.3)
+pso = PSO(func=func, n_dim=7, pop=90, max_iter=200, lb=lb, ub=ub, constraint_ueq=ueq, c1=2, c2=2, w=0.3)
 pso.run()
 print(f" Vx, drop1, bomb1, drop2, bomb2, drop3, bomb3: {pso.gbest_x}")
 print(-pso.gbest_y.item())
