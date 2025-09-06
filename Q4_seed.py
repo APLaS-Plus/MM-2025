@@ -59,6 +59,7 @@ print("best_y:", best_y)
 
 # 保存训练历史和绘图
 Y_history = pd.DataFrame(ga.all_history_Y)
+Y_history.to_csv(f"run/Q4_seed{SEED}_history.csv", index=False)
 print("训练历史统计:")
 print(Y_history.describe())
 
@@ -77,7 +78,6 @@ ax[1].set_ylabel("最优损失值")
 plt.tight_layout()
 
 # 保存结果
-Y_history.to_csv(f"run/Q4_seed{SEED}_history.csv", index=False)
 plt.savefig(f"run/Q4_seed{SEED}_loss.png")
 plt.show()
 

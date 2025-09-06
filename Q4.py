@@ -1,128 +1,251 @@
 import subprocess
 import sys
-import pandas as pd
-import random
 import json
 import math
-import multiprocessing
-
-# 测试参数
-N_SEEDS = 100  # 测试的种子数量
-MAX_ITER = 10  # 每个种子的最大迭代次数
-
-# 信号量，同时只允许一个subprocess执行
-semaphore = multiprocessing.Semaphore(1)
-
-
-def run_single_seed(seed):
-    """使用subprocess运行单个种子的优化，使用信号量控制"""
-    semaphore.acquire()  # 获取信号量，确保同时只有一个subprocess运行
-    try:
-        cmd = f"""
-import sys
-sys.path.append('.')
-from sko.GA import GA
-from sko.tools import set_run_mode
-import numpy as np
-import math
 import pandas as pd
-import torch
-from utils.Q4cal_mask_time import Q4_constraint_ueq, Q4_cal_mask_time
+import numpy as np
+from utils.Q4cal_mask_time import simgle_f_cal_mask_time
 from utils.base import *
 from utils.geo import *
-import json
-
-# 设置种子
-seed = {seed}
-np.random.seed(seed)
-torch.manual_seed(seed)
 
 # 计算参数
 max_time = math.sqrt(sum(MISSILES_INITIAL["M1"] ** 2)) / MISSILE_SPEED
 
+
+def optimize_single_drone_subprocess(drone_num, excluded_intervals_data=None):
+    """
+    使用subprocess运行单个无人机的PSO优化，避免进程池累积
+
+    Args:
+        drone_num: 无人机编号 (1, 2, 3)
+        excluded_intervals_data: 已被其他无人机占用的时间区间数据，格式为intervals的字符串表示
+
+    Returns:
+        (best_params, best_coverage_time, coverage_interval_data)
+    """
+    cmd = f"""
+import sys
+sys.path.append('.')
+from sko.PSO import PSO
+from sko.tools import set_run_mode
+import numpy as np
+import math
+import json
+import sympy as sp
+from utils.Q4cal_mask_time import simgle_f_cal_mask_time
+from utils.base import *
+from utils.geo import *
+
+# 计算参数
+max_time = math.sqrt(sum(MISSILES_INITIAL["M1"] ** 2)) / MISSILE_SPEED
+drone_num = {drone_num}
+excluded_intervals_data = {repr(excluded_intervals_data)}
+
+# 解析已有区间数据
+excluded_intervals = None
+if excluded_intervals_data:
+    excluded_intervals = []
+    for interval_str in excluded_intervals_data:
+        # 重新构造sympy区间对象
+        exec(f"from sympy import *")
+        interval_obj = eval(interval_str)
+        excluded_intervals.append(interval_obj)
+
 def func(x):
-    return -Q4_cal_mask_time(x)
+    vx, vy, drop_t, bomb_t = x
+    
+    # 计算当前无人机的遮蔽区间
+    interval = simgle_f_cal_mask_time((drone_num, vx, vy, drop_t, bomb_t))
+    
+    if excluded_intervals is None or len(excluded_intervals) == 0:
+        # 第一台无人机，直接返回遮蔽时间
+        coverage_time = interval.measure
+    else:
+        # 计算与已有区间的并集
+        combined_interval = interval
+        for exist_interval in excluded_intervals:
+            combined_interval = combined_interval.union(exist_interval)
+        
+        # 新增的遮蔽时间 = 总遮蔽时间 - 原有遮蔽时间
+        original_time = sum(intv.measure for intv in excluded_intervals)
+        total_time = combined_interval.measure
+        coverage_time = total_time - original_time
+    
+    return -coverage_time  # PSO求最小值，所以取负
 
-# 边界和约束
-lb = [-140, -30, -140, -140, -140, 0] + [0] * 6
-ub = [140, 30, 0, 140, 140, 140] + [max_time] * 6
-ueq = (Q4_constraint_ueq,)
+# 约束条件：速度范围和时间顺序
+def constraint(x):
+    vx, vy, drop_t, bomb_t = x
+    # 速度约束：70 <= |V| <= 140
+    v_magnitude = math.sqrt(vx**2 + vy**2)
+    if not (70 <= v_magnitude <= 140):
+        return 1  # 违反约束
+    # 时间约束：drop_t < drop_t + bomb_t <= max_time
+    if not (drop_t >= 0 and bomb_t > 0 and drop_t + bomb_t <= max_time):
+        return 1  # 违反约束
+    return -1  # 满足约束
 
-# 使用multiprocessing提升速度
+# 边界
+lb = [-140, -140, 0, 0]
+ub = [140, 140, max_time, max_time]
+ueq = (constraint,)
+
+w = 0.9
+c = (1 - w) / 2
+
+# PSO优化 - 使用多进程加速
 set_run_mode(func, "multiprocessing")
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+pso = PSO(func=func, n_dim=4, pop=96, max_iter=200, lb=lb, ub=ub, constraint_ueq=ueq, c1=c, c2=c, w=w)
+pso.run()
 
-# 初始化GA
-ga = GA(
-    func=func,
-    n_dim=12,
-    size_pop=94,
-    max_iter={MAX_ITER},
-    prob_mut=1 / 12,
-    lb=lb,
-    ub=ub,
-    constraint_ueq=ueq,
-    precision=1e-3,
-).to(device)
+best_params = pso.gbest_x
+best_coverage_time = -pso.gbest_y.item()
 
-# 运行优化
-best_x, best_y = ga.run()
-
-# 保存训练历史
-Y_history = pd.DataFrame(ga.all_history_Y)
-Y_history.to_csv(f"run/Q4_seed{{seed}}_history.csv", index=False)
+# 计算最优参数对应的遮蔽区间
+vx, vy, drop_t, bomb_t = best_params
+coverage_interval = simgle_f_cal_mask_time((drone_num, vx, vy, drop_t, bomb_t))
 
 # 输出结果
 result = {{
-    "seed": seed,
-    "best_x": best_x.tolist(),
-    "best_y": float(best_y),
-    "final_loss": float(Y_history.min().min())
+    "best_params": best_params.tolist(),
+    "best_coverage_time": float(best_coverage_time),
+    "coverage_interval_str": str(coverage_interval)
 }}
 
 print(json.dumps(result))
 """
 
-        result = subprocess.run(
-            [sys.executable, "-c", cmd], capture_output=True, text=True
-        )
-        if result.returncode == 0:
-            return json.loads(result.stdout.strip().split("\n")[-1])
-        else:
-            return None
-    finally:
-        semaphore.release()  # 释放信号量
+    # 运行subprocess
+    result = subprocess.run(
+        [sys.executable, "-c", cmd],
+        capture_output=True,
+        text=True,
+        timeout=300,  # 5分钟超时
+    )
+
+    if result.returncode == 0:
+        try:
+            output_data = json.loads(result.stdout.strip().split("\n")[-1])
+            best_params = np.array(output_data["best_params"])
+            best_coverage_time = output_data["best_coverage_time"]
+            coverage_interval_str = output_data["coverage_interval_str"]
+
+            # 重新构造sympy区间对象
+            import sympy as sp
+
+            coverage_interval = eval(coverage_interval_str)
+
+            return best_params, best_coverage_time, coverage_interval
+        except Exception as e:
+            print(f"解析subprocess结果失败: {e}")
+            print(f"stdout: {result.stdout}")
+            print(f"stderr: {result.stderr}")
+            return None, 0, None
+    else:
+        print(f"subprocess执行失败: {result.stderr}")
+        return None, 0, None
+
+
+def greedy_optimize_q4():
+    """
+    使用贪心策略优化Q4问题
+    """
+    print("开始贪心优化...")
+
+    # 存储结果
+    selected_drones = []
+    selected_params = []
+    selected_intervals = []
+    total_coverage = 0
+
+    remaining_drones = [1, 2, 3]
+
+    # 贪心选择过程
+    for round_num in range(3):
+        print(f"\n=== 第{round_num + 1}轮贪心选择 ===")
+
+        best_drone = None
+        best_params = None
+        best_increment = 0
+        best_interval = None
+
+        # 为每台剩余无人机计算最优方案
+        for drone_num in remaining_drones:
+            print(f"正在优化无人机FY{drone_num}...")
+
+            # 将已有区间转换为字符串格式，方便subprocess传递
+            excluded_intervals_data = None
+            if selected_intervals:
+                excluded_intervals_data = [
+                    str(interval) for interval in selected_intervals
+                ]
+
+            params, coverage_time, interval = optimize_single_drone_subprocess(
+                drone_num, excluded_intervals_data
+            )
+
+            if params is not None:
+                print(f"FY{drone_num}可提供额外遮蔽时间: {coverage_time:.4f}s")
+            else:
+                print(f"FY{drone_num}优化失败，跳过")
+                coverage_time = 0
+
+            if coverage_time > best_increment:
+                best_drone = drone_num
+                best_params = params
+                best_increment = coverage_time
+                best_interval = interval
+
+        # 选择最优无人机
+        if best_drone is not None:
+            selected_drones.append(best_drone)
+            selected_params.append(best_params)
+            selected_intervals.append(best_interval)
+            total_coverage += best_increment
+            remaining_drones.remove(best_drone)
+
+            print(
+                f"选择FY{best_drone}，参数: vx={best_params[0]:.2f}, vy={best_params[1]:.2f}, "
+                f"drop_t={best_params[2]:.2f}, bomb_t={best_params[3]:.2f}"
+            )
+            print(
+                f"新增遮蔽时间: {best_increment:.4f}s，累计总遮蔽时间: {total_coverage:.4f}s"
+            )
+
+        if not remaining_drones:
+            break
+
+    return selected_drones, selected_params, total_coverage
 
 
 # 主程序
 if __name__ == "__main__":
-    # 生成随机种子列表
-    random_seeds = [random.randint(0, 100000) for _ in range(N_SEEDS)]
-    print(f"使用的随机种子: {random_seeds}")
-
-    # 存储所有结果
-    all_results = []
-    best_overall_x = None
-    best_overall_y = float("inf")
-
-    for i, seed in enumerate(random_seeds):
-        print(f"\n=== 测试种子 {seed} (第{i+1}/{N_SEEDS}次) ===")
-
-        result = run_single_seed(seed)
-        if result:
-            all_results.append(result)
-            print(result)
-
-            # 更新全局最优
-            if result["best_y"] < best_overall_y:
-                best_overall_y = result["best_y"]
-                best_overall_x = result["best_x"]
-                print(f"发现更优解! 当前全局最优: {best_overall_y}")
-
-    # 保存所有结果
-    results_df = pd.DataFrame(all_results)
-    results_df.to_csv("run/Q4_all_seeds_results.csv", index=False)
+    selected_drones, selected_params, total_coverage = greedy_optimize_q4()
 
     print(f"\n=== 最终结果 ===")
-    print(f"全局最优解: {best_overall_x}")
-    print(f"全局最优值: {best_overall_y}")
+    print(f"选择顺序: {selected_drones}")
+    print(f"总遮蔽时间: {total_coverage:.4f}s")
+
+    for i, (drone_num, params) in enumerate(zip(selected_drones, selected_params)):
+        vx, vy, drop_t, bomb_t = params
+        print(
+            f"FY{drone_num}: vx={vx:.2f}, vy={vy:.2f}, drop_t={drop_t:.2f}, bomb_t={bomb_t:.2f}"
+        )
+
+    # 保存结果
+    results = []
+    for drone_num, params in zip(selected_drones, selected_params):
+        vx, vy, drop_t, bomb_t = params
+        results.append(
+            {
+                "drone": f"FY{drone_num}",
+                "vx": vx,
+                "vy": vy,
+                "drop_time": drop_t,
+                "bomb_time": bomb_t,
+            }
+        )
+
+    results_df = pd.DataFrame(results)
+    results_df.to_csv("run/Q4_greedy_results.csv", index=False)
+    print(f"\n结果已保存到 run/Q4_greedy_results.csv")
