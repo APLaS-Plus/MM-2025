@@ -21,7 +21,7 @@ ueq = (Q2_constraint_ueq,)
 # print(type(ueq))
 
 set_run_mode(func, "multiprocessing")
-pso = PSO(func=func, n_dim=3, pop=90, max_iter=800, lb=lb, ub=ub, constraint_ueq=ueq, c1=2, c2=2, w=0.3)
+pso = PSO(func=func, n_dim=3, pop=90, max_iter=200, lb=lb, ub=ub, constraint_ueq=ueq, c1=1, c2=1, w=0.9)
 pso.run()
 print(f" Vx, drop, bomb: {pso.gbest_x}")
 print(-pso.gbest_y.item())
@@ -29,7 +29,4 @@ print(-pso.gbest_y.item())
 plt.plot(pso.gbest_y_hist)
 plt.savefig("run/Q2_loss.png")
 
-# 最优结果
-# 参数： pop=90, max_iter=800, c1=2, c2=2, w=0.3
-#  Vx, drop, bomb: [140.           0.33567918   0.33562715]
-# 6.40046875
+# best_x is  [-70.40359495   0.           1.71457692] best_y is [-4.44587076676170]
