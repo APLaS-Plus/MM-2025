@@ -27,7 +27,7 @@ def simgle_cal_mask_time(input_data):
 
     # cal mask time
     t = sp.Symbol("t", real=True)
-    t_domain = Interval(0, oo, left_open=False)
+    t_domain = Interval(0, SMOKE_EFFECTIVE_TIME, left_open=True)
     Mx, My, Mz = (
         M1_position[0] + M1_V[0] * t,
         M1_position[1] + M1_V[1] * t,
@@ -160,8 +160,8 @@ def Q3_cal_mask_time_optimized(input_data):
         for smoke_ball in smoke_balls:
             # 调整时间：烟幕球从爆炸时刻开始存在
             smoke_t = t - smoke_ball["total_time"]
-            if smoke_t < 0:
-                continue  # 烟幕球还未爆炸
+            if smoke_t < 0 or smoke_t > SMOKE_EFFECTIVE_TIME:
+                continue  # 烟幕球还未爆炸或已消失（爆炸后20秒消失）
 
             # 导弹在时刻t的位置 (Mt)
             Mt = smoke_ball["M1_position"] + M1_V * smoke_t

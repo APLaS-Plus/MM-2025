@@ -27,7 +27,7 @@ def Q2_cal_mask_time(input_data):
 
     # cal mask time
     t = sp.Symbol("t", real=True)
-    t_domain = Interval(0, oo, left_open=False)
+    t_domain = Interval(0, SMOKE_EFFECTIVE_TIME, left_open=True)
     Mx, My, Mz = (
         M1_position[0] + M1_V[0] * t,
         M1_position[1] + M1_V[1] * t,
@@ -87,7 +87,7 @@ def Q2_cal_mask_time(input_data):
     return intersection_intervals.measure
 
 
-Q2_constraint_ueq = lambda x: 70.0 <= x[0] <= 140.0 and x[2] > x[1]
+Q2_constraint_ueq = lambda x: -1 if 70.0 <= abs(x[0]) <= 140.0 and x[2] > x[1] else 1
 
 
 def Q2_cal_mask_time_optimized(input_data):
@@ -127,8 +127,8 @@ def Q2_cal_mask_time_optimized(input_data):
         检查在时刻t是否满足线段与球体相交条件
         实现与Q2_cal_mask_time相同的几何逻辑
         """
-        if t < 0:
-            return False
+        if t < 0 or t > SMOKE_EFFECTIVE_TIME:
+            return False  # 烟幕弹还未爆炸或已消失（爆炸后20秒消失）
 
         # 导弹在时刻t的位置 (Mt)
         Mt = M1_position + M1_V * t
