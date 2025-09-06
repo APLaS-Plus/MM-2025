@@ -12,6 +12,7 @@ import numpy as np
 from utils.base import *
 from utils.geo import *
 
+
 def simgle_f_cal_mask_time(input_data):
     # unzip input data
     f_num, f_vx, f_vy, drop_t, bomb_t = input_data
@@ -93,9 +94,36 @@ def simgle_f_cal_mask_time(input_data):
 
     return intersection_intervals
 
+
 def Q4_cal_mask_time(input_data):
-    f1_vx, f1_vy, f2_vx, f2_vy, f3_vx, f3_vy, drop_t1, bomb_t1, drop_t2, bomb_t2, drop_t3, bomb_t3 = input_data
+    (
+        f1_vx,
+        f1_vy,
+        f2_vx,
+        f2_vy,
+        f3_vx,
+        f3_vy,
+        drop_t1,
+        bomb_t1,
+        drop_t2,
+        bomb_t2,
+        drop_t3,
+        bomb_t3,
+    ) = input_data
     mask_time1 = simgle_f_cal_mask_time((1, f1_vx, f1_vy, drop_t1, bomb_t1))
     mask_time2 = simgle_f_cal_mask_time((2, f2_vx, f2_vy, drop_t2, bomb_t2))
     mask_time3 = simgle_f_cal_mask_time((3, f3_vx, f3_vy, drop_t3, bomb_t3))
     return (mask_time1 | mask_time2 | mask_time3).measure
+
+
+vec_ueq = lambda x: 70.0**2 <= x[0] ** 2 + x[1] ** 2 <= 140**2
+time_ueq = lambda x: x[0] <= x[1] and x[0] + x[1] <= 66.99917080747261
+
+Q4_constraint_ueq = lambda x: (
+    -1
+    if vec_ueq(x[0:2])
+    and vec_ueq(x[2:4])
+    and vec_ueq(x[4:6])
+    and all(time_ueq(x[i * 2 : i * 2 + 2]) for i in range(3, 6))
+    else 1
+)
