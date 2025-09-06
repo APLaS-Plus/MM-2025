@@ -117,7 +117,10 @@ def Q3_cal_mask_time(input_data):
     return (mask_time1 | mask_time2 | mask_time3).measure
 
 
-Q3_constraint_ueq = lambda x: 70.0 <= abs(x[0]) <= 140.0 and x[2] >= x[1] and x[4] >= x[3] and x[6] >= x[5] and sum(x[1:7]) <= 66.99917080747261
+vec_ueq = lambda x: 70.0 <= abs(x[0]) <= 140
+time_ueq = lambda x: x[0] <= x[1] and x[0] + x[1] <= 66.99917080747261
+
+Q3_constraint_ueq = lambda x: -1 if vec_ueq(x) and all(time_ueq(x[i*2+1:i*2+2+1]) for i in range(0, 3)) else 1
 
 
 def Q3_cal_mask_time_optimized(input_data):

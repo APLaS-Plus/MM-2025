@@ -21,10 +21,16 @@ ueq = (Q3_constraint_ueq,)
 # print(type(ueq))
 
 set_run_mode(func, "multiprocessing")
-pso = PSO(func=func, n_dim=7, pop=90, max_iter=200, lb=lb, ub=ub, constraint_ueq=ueq, c1=2, c2=2, w=0.3)
+pso = PSO(func=func, n_dim=7, pop=90, max_iter=450, lb=lb, ub=ub, constraint_ueq=ueq, c1=1, c2=1, w=0.9)
+
 pso.run()
-print(f" Vx, drop1, bomb1, drop2, bomb2, drop3, bomb3: {pso.gbest_x}")
-print(-pso.gbest_y.item())
+print('best_x is ', pso.gbest_x, 'best_y is', pso.gbest_y)
+
 
 plt.plot(pso.gbest_y_hist)
 plt.savefig("run/Q3_loss.png")
+
+# best result
+#  Vx, drop1, bomb1, drop2, bomb2, drop3, bomb3: [-140.            2.54644717    4.86173911    0.            0.
+#     5.01433474    5.86561889]
+# 9.189296874999997
