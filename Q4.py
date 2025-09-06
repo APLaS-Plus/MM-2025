@@ -4,6 +4,7 @@ import json
 import math
 import pandas as pd
 import numpy as np
+import random
 from utils.Q4cal_mask_time import simgle_f_cal_mask_time
 from utils.base import *
 from utils.geo import *
@@ -12,18 +13,27 @@ from utils.geo import *
 max_time = math.sqrt(sum(MISSILES_INITIAL["M1"] ** 2)) / MISSILE_SPEED
 
 
-def optimize_single_drone_subprocess(drone_num, excluded_intervals_data=None):
+def optimize_single_drone_subprocess(
+    drone_num, excluded_intervals_data=None, max_retries=10
+):
     """
     使用subprocess运行单个无人机的PSO优化，避免进程池累积
+    支持重试机制克服PSO随机性问题
 
     Args:
         drone_num: 无人机编号 (1, 2, 3)
         excluded_intervals_data: 已被其他无人机占用的时间区间数据，格式为intervals的字符串表示
+        max_retries: 最大重试次数
 
     Returns:
         (best_params, best_coverage_time, coverage_interval_data)
     """
-    cmd = f"""
+
+    for retry in range(max_retries):
+        # 每次重试使用不同的随机种子
+        random_seed = random.randint(1, 100000)
+
+        cmd = f"""
 import sys
 sys.path.append('.')
 from sko.PSO import PSO
@@ -35,6 +45,9 @@ import sympy as sp
 from utils.Q4cal_mask_time import simgle_f_cal_mask_time
 from utils.base import *
 from utils.geo import *
+
+# 设置随机种子
+np.random.seed({random_seed})
 
 # 计算参数
 max_time = math.sqrt(sum(MISSILES_INITIAL["M1"] ** 2)) / MISSILE_SPEED
@@ -73,20 +86,20 @@ def func(x):
     
     return -coverage_time  # PSO求最小值，所以取负
 
-# 约束条件：速度范围和时间顺序
+# 约束条件：根据原始Q4约束逻辑修正
 def constraint(x):
     vx, vy, drop_t, bomb_t = x
-    # 速度约束：70 <= |V| <= 140
-    v_magnitude = math.sqrt(vx**2 + vy**2)
-    if not (70 <= v_magnitude <= 140):
+    # 速度约束：70² <= vx² + vy² <= 140² (参考原始vec_ueq)
+    v_magnitude_sq = vx**2 + vy**2
+    if not (70.0**2 <= v_magnitude_sq <= 140.0**2):
         return 1  # 违反约束
-    # 时间约束：drop_t < drop_t + bomb_t <= max_time
-    if not (drop_t >= 0 and bomb_t > 0 and drop_t + bomb_t <= max_time):
+    # 时间约束：drop_t <= bomb_t and drop_t + bomb_t <= max_time (参考原始time_ueq)
+    if not (drop_t <= bomb_t and drop_t + bomb_t <= max_time):
         return 1  # 违反约束
     return -1  # 满足约束
 
-# 边界
-lb = [-140, -140, 0, 0]
+# 边界 - 根据约束条件设置
+lb = [-140, -140, 0, 0]  
 ub = [140, 140, max_time, max_time]
 ueq = (constraint,)
 
@@ -115,35 +128,45 @@ result = {{
 print(json.dumps(result))
 """
 
-    # 运行subprocess
-    result = subprocess.run(
-        [sys.executable, "-c", cmd],
-        capture_output=True,
-        text=True,
-        timeout=300,  # 5分钟超时
-    )
+        # 运行subprocess
+        result = subprocess.run(
+            [sys.executable, "-c", cmd],
+            capture_output=True,
+            text=True,
+            timeout=300,  # 5分钟超时
+        )
 
-    if result.returncode == 0:
-        try:
-            output_data = json.loads(result.stdout.strip().split("\n")[-1])
-            best_params = np.array(output_data["best_params"])
-            best_coverage_time = output_data["best_coverage_time"]
-            coverage_interval_str = output_data["coverage_interval_str"]
+        if result.returncode == 0:
+            try:
+                output_data = json.loads(result.stdout.strip().split("\n")[-1])
+                best_params = np.array(output_data["best_params"])
+                best_coverage_time = output_data["best_coverage_time"]
+                coverage_interval_str = output_data["coverage_interval_str"]
 
-            # 重新构造sympy区间对象
-            import sympy as sp
+                # 重新构造sympy区间对象
+                import sympy as sp
+                from sympy import Interval, EmptySet, Union, oo
 
-            coverage_interval = eval(coverage_interval_str)
+                coverage_interval = eval(coverage_interval_str)
 
-            return best_params, best_coverage_time, coverage_interval
-        except Exception as e:
-            print(f"解析subprocess结果失败: {e}")
-            print(f"stdout: {result.stdout}")
-            print(f"stderr: {result.stderr}")
-            return None, 0, None
-    else:
-        print(f"subprocess执行失败: {result.stderr}")
-        return None, 0, None
+                # 检查是否找到有效解
+                if best_coverage_time > 0:
+                    if retry > 0:  # 如果不是第一次尝试才显示重试信息
+                        print(
+                            f"  FY{drone_num}第{retry+1}次尝试成功，遮蔽时间: {best_coverage_time:.4f}s"
+                        )
+                    return best_params, best_coverage_time, coverage_interval
+                else:
+                    print(f"  FY{drone_num}第{retry+1}次尝试遮蔽时间为0，重试中...")
+
+            except Exception as e:
+                print(f"  FY{drone_num}第{retry+1}次尝试解析失败: {e}")
+        else:
+            print(f"  FY{drone_num}第{retry+1}次尝试subprocess失败")
+
+    # 所有重试都失败了
+    print(f"FY{drone_num}经过{max_retries}次尝试仍未找到有效解")
+    return None, 0, None
 
 
 def greedy_optimize_q4():
