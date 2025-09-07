@@ -110,12 +110,158 @@ def simgle_cal_mask_time(input_data):
     return intersection_intervals
 
 
+def simgle_cal_mask_time_optimized(input_data, num_samples=2000):
+    """
+    使用采样法的优化版本计算单个烟幕弹的遮蔽时间（速度更快）
+
+    Args:
+        input_data: (f1_vx, drop_t, bomb_t) 输入参数
+        num_samples: 采样点数量，默认2000
+
+    Returns:
+        list: 相交时间区间列表 [(start1, end1), (start2, end2), ...]
+    """
+    # unzip input data
+    f1_vx, drop_t, bomb_t = input_data
+
+    # define FY1 and M1
+    FY1_init_position = DRONES_INITIAL["FY1"]
+    f1_V = np.array([f1_vx, 0, 0])
+
+    M1_init_position = MISSILES_INITIAL["M1"]
+    M1_V = calculate_velocity_vector(M1_init_position, FAKE_TARGET, MISSILE_SPEED)
+
+    # cal drop time
+    drop_position = calculate_position_with_velocity(FY1_init_position, f1_V, drop_t)
+
+    # cal bomb time
+    bomb_position = calculate_parabolic_trajectory(drop_position, f1_V, bomb_t)
+    M1_position = calculate_position_with_velocity(
+        M1_init_position, M1_V, drop_t + bomb_t
+    )
+
+    # 采样法计算
+    true_target = np.array(TRUE_TARGET_CENTER)
+    R = SMOKE_EFFECTIVE_RADIUS
+
+    # 时间采样
+    t_start = 0.0
+    t_end = SMOKE_EFFECTIVE_TIME
+    time_samples = np.linspace(t_start, t_end, num_samples)
+
+    intersection_flags = []  # 记录每个时间点是否相交
+
+    for t in time_samples:
+        # 导弹在时刻t的位置
+        Mt = np.array(
+            [
+                M1_position[0] + M1_V[0] * t,
+                M1_position[1] + M1_V[1] * t,
+                M1_position[2] + M1_V[2] * t,
+            ]
+        )
+
+        # 烟幕球心在时刻t的位置
+        St = np.array(
+            [
+                bomb_position[0],
+                bomb_position[1],
+                bomb_position[2] - SMOKE_SINK_SPEED * t,
+            ]
+        )
+
+        # 判断线段（真目标到导弹）是否与烟幕球相交
+        is_intersecting = is_line_intersecting_sphere(true_target, Mt, St, R)
+        intersection_flags.append(is_intersecting)
+
+    # 统计相交时间区间
+    intersection_intervals = []
+    in_intersection = False
+    start_time = None
+
+    for i, flag in enumerate(intersection_flags):
+        t = time_samples[i]
+
+        if flag and not in_intersection:
+            # 开始相交
+            in_intersection = True
+            start_time = t
+        elif not flag and in_intersection:
+            # 结束相交
+            in_intersection = False
+            intersection_intervals.append((start_time, t))
+
+    # 处理结尾情况
+    if in_intersection:
+        intersection_intervals.append((start_time, t_end))
+
+    return intersection_intervals
+
+
+def merge_intervals(intervals):
+    """
+    合并重叠的时间区间
+
+    Args:
+        intervals: 时间区间列表 [(start1, end1), (start2, end2), ...]
+
+    Returns:
+        float: 合并后的总时间长度
+    """
+    if not intervals:
+        return 0.0
+
+    # 按起始时间排序
+    sorted_intervals = sorted(intervals)
+    merged = [sorted_intervals[0]]
+
+    for current in sorted_intervals[1:]:
+        last = merged[-1]
+
+        # 检查是否重叠
+        if current[0] <= last[1]:
+            # 合并区间
+            merged[-1] = (last[0], max(last[1], current[1]))
+        else:
+            # 不重叠，添加新区间
+            merged.append(current)
+
+    # 计算总时长
+    total_duration = sum(end - start for start, end in merged)
+    return total_duration
+
+
 def Q3_cal_mask_time(input_data):
     f1_vx, drop_t1, bomb_t1, drop_t2, bomb_t2, drop_t3, bomb_t3 = input_data
     mask_time1 = simgle_cal_mask_time((f1_vx, drop_t1, bomb_t1))
     mask_time2 = simgle_cal_mask_time((f1_vx, drop_t2, bomb_t2))
     mask_time3 = simgle_cal_mask_time((f1_vx, drop_t3, bomb_t3))
     return (mask_time1 | mask_time2 | mask_time3).measure
+
+
+def Q3_cal_mask_time_optimized(input_data, num_samples=2000):
+    """
+    使用采样法的优化版本计算Q3的总遮蔽时间（速度更快）
+
+    Args:
+        input_data: (f1_vx, drop_t1, bomb_t1, drop_t2, bomb_t2, drop_t3, bomb_t3) 输入参数
+        num_samples: 采样点数量，默认2000
+
+    Returns:
+        float: 总遮蔽时间长度
+    """
+    f1_vx, drop_t1, bomb_t1, drop_t2, bomb_t2, drop_t3, bomb_t3 = input_data
+
+    # 计算三个烟幕弹的遮蔽区间
+    intervals1 = simgle_cal_mask_time_optimized((f1_vx, drop_t1, bomb_t1), num_samples)
+    intervals2 = simgle_cal_mask_time_optimized((f1_vx, drop_t2, bomb_t2), num_samples)
+    intervals3 = simgle_cal_mask_time_optimized((f1_vx, drop_t3, bomb_t3), num_samples)
+
+    # 合并所有区间
+    all_intervals = intervals1 + intervals2 + intervals3
+
+    # 计算合并后的总时长
+    return merge_intervals(all_intervals)
 
 
 vec_ueq = lambda x: 70.0 <= abs(x[0]) <= 140

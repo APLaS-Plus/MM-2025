@@ -114,4 +114,95 @@ def Q2_cal_mask_time(input_data):
         return 0
 
 
+def Q2_cal_mask_time_optimized(input_data, num_samples=2000):
+    """
+    使用采样法的优化版本计算遮蔽时间（速度更快）
+
+    Args:
+        input_data: (f1_vx, drop_t, bomb_t) 输入参数
+        num_samples: 采样点数量，默认2000
+
+    Returns:
+        float: 遮蔽时间长度
+    """
+    # unzip input data
+    f1_vx, drop_t, bomb_t = input_data
+
+    # define FY1 and M1
+    FY1_init_position = DRONES_INITIAL["FY1"]
+    f1_V = np.array([f1_vx, 0, 0])
+
+    M1_init_position = MISSILES_INITIAL["M1"]
+    M1_V = calculate_velocity_vector(M1_init_position, FAKE_TARGET, MISSILE_SPEED)
+
+    # cal drop time
+    drop_position = calculate_position_with_velocity(FY1_init_position, f1_V, drop_t)
+
+    # cal bomb time
+    bomb_position = calculate_parabolic_trajectory(drop_position, f1_V, bomb_t)
+    M1_position = calculate_position_with_velocity(
+        M1_init_position, M1_V, drop_t + bomb_t
+    )
+
+    # 采样法计算
+    true_target = np.array(TRUE_TARGET_CENTER)
+    R = SMOKE_EFFECTIVE_RADIUS
+
+    # 时间采样
+    t_start = 0.0
+    t_end = SMOKE_EFFECTIVE_TIME
+    time_samples = np.linspace(t_start, t_end, num_samples)
+
+    intersection_flags = []  # 记录每个时间点是否相交
+
+    for t in time_samples:
+        # 导弹在时刻t的位置
+        Mt = np.array(
+            [
+                M1_position[0] + M1_V[0] * t,
+                M1_position[1] + M1_V[1] * t,
+                M1_position[2] + M1_V[2] * t,
+            ]
+        )
+
+        # 烟幕球心在时刻t的位置
+        St = np.array(
+            [
+                bomb_position[0],
+                bomb_position[1],
+                bomb_position[2] - SMOKE_SINK_SPEED * t,
+            ]
+        )
+
+        # 判断线段（真目标到导弹）是否与烟幕球相交
+        is_intersecting = is_line_intersecting_sphere(true_target, Mt, St, R)
+        intersection_flags.append(is_intersecting)
+
+    # 统计相交时间区间
+    intersection_intervals = []
+    in_intersection = False
+    start_time = None
+
+    for i, flag in enumerate(intersection_flags):
+        t = time_samples[i]
+
+        if flag and not in_intersection:
+            # 开始相交
+            in_intersection = True
+            start_time = t
+        elif not flag and in_intersection:
+            # 结束相交
+            in_intersection = False
+            intersection_intervals.append((start_time, t))
+
+    # 处理结尾情况
+    if in_intersection:
+        intersection_intervals.append((start_time, t_end))
+
+    # 计算总相交时长
+    total_duration = sum(end - start for start, end in intersection_intervals)
+
+    return total_duration
+
+
 Q2_constraint_ueq = lambda x: -1 if 70.0 <= abs(x[0]) <= 140.0 and x[2] > x[1] else 1

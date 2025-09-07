@@ -11,7 +11,10 @@ from sympy import Interval, oo, Union, EmptySet
 import numpy as np
 from utils.base import *
 from utils.geo import *
-from utils.Q4cal_mask_time import simgle_f_cal_mask_time
+from utils.Q4cal_mask_time import (
+    simgle_f_cal_mask_time,
+    simgle_f_cal_mask_time_optimized,
+)
 
 
 def single_drone_multi_smoke_mask_time(drone_assignment):
@@ -60,6 +63,69 @@ def single_drone_multi_smoke_mask_time(drone_assignment):
     return combined_interval
 
 
+def single_drone_multi_smoke_mask_time_optimized(drone_assignment, num_samples=2000):
+    """
+    使用采样法的优化版本计算单个无人机投放多枚烟幕弹对指定导弹的遮蔽时间（速度更快）
+
+    Args:
+        drone_assignment: 字典格式（同上）
+        num_samples: 采样点数量，默认2000
+
+    Returns:
+        list: 相交时间区间列表 [(start1, end1), (start2, end2), ...]
+    """
+    drone_num = drone_assignment["drone_num"]
+    vx, vy = drone_assignment["flight_params"]
+    smoke_bombs = drone_assignment["smoke_bombs"]
+
+    # 计算每颗烟幕弹的遮蔽区间
+    all_intervals = []
+    for smoke in smoke_bombs:
+        drop_t = smoke["drop_t"]
+        bomb_t = smoke["bomb_t"]
+
+        # 使用Q4的优化单个计算函数
+        intervals = simgle_f_cal_mask_time_optimized(
+            (drone_num, vx, vy, drop_t, bomb_t), num_samples
+        )
+        all_intervals.extend(intervals)
+
+    return all_intervals
+
+
+def merge_intervals_q5(intervals):
+    """
+    合并重叠的时间区间（Q5版本）
+
+    Args:
+        intervals: 时间区间列表 [(start1, end1), (start2, end2), ...]
+
+    Returns:
+        float: 合并后的总时间长度
+    """
+    if not intervals:
+        return 0.0
+
+    # 按起始时间排序
+    sorted_intervals = sorted(intervals)
+    merged = [sorted_intervals[0]]
+
+    for current in sorted_intervals[1:]:
+        last = merged[-1]
+
+        # 检查是否重叠
+        if current[0] <= last[1]:
+            # 合并区间
+            merged[-1] = (last[0], max(last[1], current[1]))
+        else:
+            # 不重叠，添加新区间
+            merged.append(current)
+
+    # 计算总时长
+    total_duration = sum(end - start for start, end in merged)
+    return total_duration
+
+
 def calculate_multi_drone_mask_time(drone_assignments, target_missile):
     """
     计算多个无人机对指定导弹的总遮蔽时间
@@ -99,6 +165,45 @@ def calculate_multi_drone_mask_time(drone_assignments, target_missile):
     return float(combined_interval.measure)
 
 
+def calculate_multi_drone_mask_time_optimized(
+    drone_assignments, target_missile, num_samples=2000
+):
+    """
+    使用采样法的优化版本计算多个无人机对指定导弹的总遮蔽时间（速度更快）
+
+    Args:
+        drone_assignments: 无人机分配列表
+        target_missile: 目标导弹编号 ('M1', 'M2', 'M3')
+        num_samples: 采样点数量，默认2000
+
+    Returns:
+        float: 总遮蔽时间
+    """
+    # 筛选出针对目标导弹的无人机
+    relevant_assignments = [
+        assignment
+        for assignment in drone_assignments
+        if assignment.get("missile_target") == target_missile
+    ]
+
+    if not relevant_assignments:
+        return 0.0
+
+    # 计算每个无人机的遮蔽区间
+    all_intervals = []
+    for assignment in relevant_assignments:
+        intervals = single_drone_multi_smoke_mask_time_optimized(
+            assignment, num_samples
+        )
+        all_intervals.extend(intervals)
+
+    if not all_intervals:
+        return 0.0
+
+    # 计算合并后的总时长
+    return merge_intervals_q5(all_intervals)
+
+
 def calculate_total_mask_effectiveness(drone_assignments):
     """
     计算所有无人机对所有导弹的总遮蔽效果
@@ -114,6 +219,31 @@ def calculate_total_mask_effectiveness(drone_assignments):
 
     for missile in ["M1", "M2", "M3"]:
         mask_time = calculate_multi_drone_mask_time(drone_assignments, missile)
+        results[missile] = mask_time
+        total_time += mask_time
+
+    results["total"] = total_time
+    return results
+
+
+def calculate_total_mask_effectiveness_optimized(drone_assignments, num_samples=2000):
+    """
+    使用采样法的优化版本计算所有无人机对所有导弹的总遮蔽效果（速度更快）
+
+    Args:
+        drone_assignments: 无人机分配列表
+        num_samples: 采样点数量，默认2000
+
+    Returns:
+        dict: {'M1': mask_time, 'M2': mask_time, 'M3': mask_time, 'total': total_time}
+    """
+    results = {}
+    total_time = 0.0
+
+    for missile in ["M1", "M2", "M3"]:
+        mask_time = calculate_multi_drone_mask_time_optimized(
+            drone_assignments, missile, num_samples
+        )
         results[missile] = mask_time
         total_time += mask_time
 

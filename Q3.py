@@ -3,7 +3,7 @@ from sko.tools import set_run_mode
 import numpy as np
 import math
 import matplotlib.pyplot as plt
-from utils.Q3cal_mask_time import Q3_constraint_ueq, Q3_cal_mask_time
+from utils.Q3cal_mask_time import Q3_constraint_ueq, Q3_cal_mask_time, Q3_cal_mask_time_optimized
 from utils.base import *
 from utils.geo import *
 
@@ -12,7 +12,7 @@ max_time = math.sqrt(sum(MISSILES_INITIAL["M1"]**2)) / MISSILE_SPEED
 print(f"max_time: {max_time}")
 
 def func(x):
-    return -Q3_cal_mask_time(x)
+    return -Q3_cal_mask_time_optimized(x)
 
 lb = [-140] + [0] * 6
 ub = [140] + [max_time] * 6

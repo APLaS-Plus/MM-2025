@@ -5,7 +5,11 @@ import math
 import pandas as pd
 import numpy as np
 import random
-from utils.Q4cal_mask_time import simgle_f_cal_mask_time
+from utils.Q4cal_mask_time import (
+    simgle_f_cal_mask_time,
+    simgle_f_cal_mask_time_optimized,
+    merge_intervals_q4,
+)
 from utils.base import *
 from utils.geo import *
 
@@ -45,7 +49,7 @@ import numpy as np
 import math
 import json
 import sympy as sp
-from utils.Q4cal_mask_time import simgle_f_cal_mask_time
+from utils.Q4cal_mask_time import simgle_f_cal_mask_time_optimized, merge_intervals_q4
 from utils.base import *
 from utils.geo import *
 
@@ -56,34 +60,33 @@ excluded_intervals_data = {repr(excluded_intervals_data)}
 custom_lb = {custom_lb}
 custom_ub = {custom_ub}
 
-# 解析已有区间数据
+# 解析已有区间数据（采样法返回的是区间列表）
 excluded_intervals = None
 if excluded_intervals_data:
     excluded_intervals = []
-    for interval_str in excluded_intervals_data:
-        # 重新构造sympy区间对象
-        exec(f"from sympy import *")
-        interval_obj = eval(interval_str)
-        excluded_intervals.append(interval_obj)
+    for interval_list_str in excluded_intervals_data:
+        # 解析区间列表字符串，例如："[(1.5, 3.2), (5.0, 7.8)]"
+        interval_list = eval(interval_list_str)
+        excluded_intervals.extend(interval_list)
 
 def func(x):
     vx, vy, drop_t, bomb_t = x
     
-    # 计算当前无人机的遮蔽区间
-    interval = simgle_f_cal_mask_time((drone_num, vx, vy, drop_t, bomb_t))
+    # 使用优化版本计算当前无人机的遮蔽区间（返回区间列表）
+    current_intervals = simgle_f_cal_mask_time_optimized((drone_num, vx, vy, drop_t, bomb_t), 2000)
     
     if excluded_intervals is None or len(excluded_intervals) == 0:
         # 第一台无人机，直接返回遮蔽时间
-        coverage_time = interval.measure
+        coverage_time = merge_intervals_q4(current_intervals)
     else:
         # 计算与已有区间的并集
-        combined_interval = interval
-        for exist_interval in excluded_intervals:
-            combined_interval = combined_interval.union(exist_interval)
+        all_intervals = current_intervals + excluded_intervals
+        total_time = merge_intervals_q4(all_intervals)
+        
+        # 原有遮蔽时间
+        original_time = merge_intervals_q4(excluded_intervals)
         
         # 新增的遮蔽时间 = 总遮蔽时间 - 原有遮蔽时间
-        original_time = sum(intv.measure for intv in excluded_intervals)
-        total_time = combined_interval.measure
         coverage_time = total_time - original_time
     
     return -coverage_time  # PSO求最小值，所以取负
@@ -123,15 +126,15 @@ pso.run()
 best_params = pso.gbest_x
 best_coverage_time = -pso.gbest_y.item()
 
-# 计算最优参数对应的遮蔽区间
+# 计算最优参数对应的遮蔽区间（使用优化版本）
 vx, vy, drop_t, bomb_t = best_params
-coverage_interval = simgle_f_cal_mask_time((drone_num, vx, vy, drop_t, bomb_t))
+coverage_intervals = simgle_f_cal_mask_time_optimized((drone_num, vx, vy, drop_t, bomb_t), 2000)
 
 # 输出结果
 result = {{
     "best_params": best_params.tolist(),
     "best_coverage_time": float(best_coverage_time),
-    "coverage_interval_str": str(coverage_interval)
+    "coverage_intervals": coverage_intervals
 }}
 
 print(json.dumps(result))
@@ -150,13 +153,7 @@ print(json.dumps(result))
                 output_data = json.loads(result.stdout.strip().split("\n")[-1])
                 best_params = np.array(output_data["best_params"])
                 best_coverage_time = output_data["best_coverage_time"]
-                coverage_interval_str = output_data["coverage_interval_str"]
-
-                # 重新构造sympy区间对象
-                import sympy as sp
-                from sympy import Interval, EmptySet, Union, oo
-
-                coverage_interval = eval(coverage_interval_str)
+                coverage_intervals = output_data["coverage_intervals"]
 
                 # 检查是否找到有效解
                 if best_coverage_time > 0:
@@ -164,7 +161,7 @@ print(json.dumps(result))
                         print(
                             f"  FY{drone_num}第{retry+1}次尝试成功，遮蔽时间: {best_coverage_time:.4f}s"
                         )
-                    return best_params, best_coverage_time, coverage_interval
+                    return best_params, best_coverage_time, coverage_intervals
                 else:
                     print(f"  FY{drone_num}第{retry+1}次尝试遮蔽时间为0，重试中...")
 
@@ -235,10 +232,11 @@ def greedy_optimize_q4():
             print(f"正在优化无人机FY{drone_num}...")
 
             # 将已有区间转换为字符串格式，方便subprocess传递
+            # 现在selected_intervals存储的是区间列表，直接转换为字符串
             excluded_intervals_data = None
             if selected_intervals:
                 excluded_intervals_data = [
-                    str(interval) for interval in selected_intervals
+                    str(intervals) for intervals in selected_intervals
                 ]
 
             # 根据无人机位置和需求设置搜索边界
@@ -248,7 +246,7 @@ def greedy_optimize_q4():
             # 例如: 如果想让FY2只向左移动，可以设置:
             # if drone_num == 2: custom_ub[0] = 0  # x方向上界设为0
 
-            params, coverage_time, interval = optimize_single_drone_subprocess(
+            params, coverage_time, intervals = optimize_single_drone_subprocess(
                 drone_num,
                 excluded_intervals_data,
                 custom_lb=custom_lb,
@@ -265,7 +263,7 @@ def greedy_optimize_q4():
                 best_drone = drone_num
                 best_params = params
                 best_increment = coverage_time
-                best_interval = interval
+                best_interval = intervals
 
         # 选择最优无人机
         if best_drone is not None:
