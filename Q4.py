@@ -120,7 +120,7 @@ c = (1 - w) / 2
 
 # PSO优化 - 使用多进程加速
 set_run_mode(func, "multiprocessing")
-pso = PSO(func=func, n_dim=4, pop=96, max_iter=200, lb=lb, ub=ub, constraint_ueq=ueq, c1=c, c2=c, w=w)
+pso = PSO(func=func, n_dim=4, pop=96, max_iter=100, lb=lb, ub=ub, constraint_ueq=ueq, c1=c, c2=c, w=w)
 pso.run()
 
 best_params = pso.gbest_x
@@ -158,6 +158,7 @@ print(json.dumps(result))
                 # 检查是否找到有效解
                 if best_coverage_time > 0:
                     if retry > 0:  # 如果不是第一次尝试才显示重试信息
+                        print(output_data)
                         print(
                             f"  FY{drone_num}第{retry+1}次尝试成功，遮蔽时间: {best_coverage_time:.4f}s"
                         )
@@ -168,7 +169,7 @@ print(json.dumps(result))
             except Exception as e:
                 print(f"  FY{drone_num}第{retry+1}次尝试解析失败: {e}")
         else:
-            print(f"  FY{drone_num}第{retry+1}次尝试subprocess失败")
+            print(f"  FY{drone_num}第{retry+1}次尝试subprocess失败, returncode: {result.returncode}")
 
     # 所有重试都失败了
     print(f"FY{drone_num}经过{max_retries}次尝试仍未找到有效解")
@@ -194,15 +195,17 @@ def get_drone_search_bounds(drone_num):
         custom_ub = [140, 30, max_time, max_time]
     elif drone_num == 2:  # FY2位置: (12000, 1400, 1400) - 右上方
         # FY2需要向左下移动才能接近拦截路径，限制向右上移动
-        custom_lb = [-140, -140, 0, 0]
-        custom_ub = [90, 0, max_time, max_time]  # 允许少量右上移动但主要向左下
+        custom_lb = [-50, -140, 0, 0]
+        custom_ub = [50, 0, max_time, max_time]  # 允许少量右上移动但主要向左下
     else:  # FY3位置: (6000, -3000, 700) - 右下方
         # FY3需要向左上移动才能接近拦截路径，限制向右下移动
-        custom_lb = [-140, 0, 0, 0]  # 允许少量向下但主要向上
-        custom_ub = [90, 140, max_time, max_time]
+        custom_lb = [-50, 0, 10, 10]  # 允许少量向下但主要向上
+        custom_ub = [50, 140, max_time, max_time]
 
     return custom_lb, custom_ub
 
+# {'best_params': [-21.69862486599209, -124.88320592862657, 4.552258119734789, 6.371762423949579], 'best_coverage_time': 4.392196098049024, 'coverage_intervals': [[5.91295647823912, 10.305152576288144]]}
+#   FY2第5次尝试成功，遮蔽时间: 4.3922s
 
 def greedy_optimize_q4():
     """
@@ -318,3 +321,6 @@ if __name__ == "__main__":
     results_df = pd.DataFrame(results)
     results_df.to_csv("run/Q4_greedy_results.csv", index=False)
     print(f"\n结果已保存到 run/Q4_greedy_results.csv")
+
+# {'best_params': [-21.69862486599209, -124.88320592862657, 4.552258119734789, 6.371762423949579], 'best_coverage_time': 4.392196098049024, 'coverage_intervals': [[5.91295647823912, 10.305152576288144]]}
+#   FY2第5次尝试成功，遮蔽时间: 4.3922s
