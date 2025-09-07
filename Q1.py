@@ -105,9 +105,12 @@ print(f"a = {a_coeff}")
 print(f"b = {b_coeff}")
 print(f"c = {c_coeff}")
 
-# 求解二次不等式的判别式
-discriminant = b_coeff**2 - 4 * a_coeff * c_coeff
-print(f"判别式 = {discriminant.simplify()}")
+# s* = clamp(-b/(2a), 0, 1)
+s_unclamped = -b_coeff / (2 * a_coeff)
+s_star = sp.Min(1, sp.Max(0, s_unclamped))
+
+# 线段到球心的最小二乘距离 g_min(t) = a*s*^2 + b*s* + c
+g_min = a_coeff * s_star**2 + b_coeff * s_star + c_coeff
 
 # 当判别式 ≥ 0 且 a > 0 时，不等式有解
 # 解为：s ∈ [(-b - √Δ)/(2a), (-b + √Δ)/(2a)] ∩ [0,1]
@@ -123,13 +126,12 @@ print(f"\n参数s的解集（s ∈ [0,1]）: {s_solutions}")
 
 # 对于每个时刻t，检查是否存在s使得线段与球相交
 # 即：存在s ∈ [0,1]使得二次不等式成立
-intersection_condition = discriminant >= 0
-
-# 求解相交时间区间
-intersection_intervals = sp.solveset(intersection_condition, t, domain=t_domain)
+# 以 g_min <= 0 为遮蔽充要条件，并在 t∈(0,20] 内求解
+mask_set = sp.solve_univariate_inequality(g_min <= 0, t, relational=False)
+intersection_intervals = mask_set.intersect(t_domain)
 
 print(f"\n相交时间区间求解:")
-print(f"相交条件（判别式≥0）: {intersection_condition}")
+print(f"相交条件（判别式≥0）: {intersection_intervals}")
 print(f"相交时间区间: {intersection_intervals}")
 
 # 计算有效遮蔽时长
@@ -141,7 +143,7 @@ if intersection_intervals != sp.S.EmptySet and intersection_intervals.measure !=
 else:
     print(f"\n最终结果:")
     print(f"无有效遮蔽时间")
-
+    
 # FY1_init_position: [17800     0  1800]
 # FY_target: [   0    0 1800]
 # FY1_V: [-120.    0.    0.]
@@ -164,14 +166,13 @@ else:
 # a = 90000.0*t**2 - 11141850.7453451*t + 344875661.19874
 # b = -179.106694237798*t**2 + 10376378.777096*t - 641682993.671693
 # c = (3*t - 1736.496)**2 + 295467244.0
-# 判别式 = -3207920.79207921*t**4 + 434980184.982596*t**3 - 31424709475.3438*t**2 + 278506896228.0*t - 557780858048.0
 
 # 参数s的解集（s ∈ [0,1]）: ConditionSet(s, s**2*(90000.0*t**2 - 11141850.7453451*t + 344875661.19874) + s*(-179.106694237798*t**2 + 10376378.777096*t - 641682993.671693) + (3*t - 1736.496)**2 + 295467244.0 <= 0, Interval(0, 1))
 
 # 相交时间区间求解:
-# 相交条件（判别式≥0）: -((3*t - 1736.496)**2 + 295467244.0)*(360000.0*t**2 - 44567402.9813803*t + 1379502644.79496) + (-179.106694237798*t**2 + 10376378.777096*t - 641682993.671693)**2 >= 0
-# 相交时间区间: Interval(2.93789075925857, 6.93477511101573)
+# 相交条件（判别式≥0）: Interval(2.93789075964668, 4.34808815870863)
+# 相交时间区间: Interval(2.93789075964668, 4.34808815870863)
 
 # 最终结果:
-# 有效遮蔽时间区间: Interval(2.93789075925857, 6.93477511101573)
-# 有效遮蔽时长: 3.996884 秒
+# 有效遮蔽时间区间: Interval(2.93789075964668, 4.34808815870863)
+# 有效遮蔽时长: 1.410197 秒

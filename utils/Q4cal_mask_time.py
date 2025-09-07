@@ -83,14 +83,16 @@ def simgle_f_cal_mask_time(input_data):
     b_coeff = 2 * E_dot_D
     c_coeff = E_dot_E - R**2
 
-    # 求解二次不等式的判别式
-    discriminant = b_coeff**2 - 4 * a_coeff * c_coeff
+    # s* = clamp(-b/(2a), 0, 1)
+    s_unclamped = -b_coeff / (2 * a_coeff)
+    s_star = sp.Min(1, sp.Max(0, s_unclamped))
 
-    # 相交条件：判别式 ≥ 0
-    intersection_condition = discriminant >= 0
+    # 线段到球心的最小二乘距离 g_min(t) = a*s*^2 + b*s* + c
+    g_min = a_coeff * s_star**2 + b_coeff * s_star + c_coeff
 
-    # 求解相交时间区间
-    intersection_intervals = sp.solveset(intersection_condition, t, domain=t_domain)
+    # 以 g_min <= 0 为遮蔽充要条件，并在 t∈(0,20] 内求解
+    mask_set = sp.solve_univariate_inequality(g_min <= 0, t, relational=False)
+    intersection_intervals = mask_set.intersect(t_domain)
 
     return intersection_intervals
 

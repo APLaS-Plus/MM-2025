@@ -14,7 +14,11 @@ max_time = math.sqrt(sum(MISSILES_INITIAL["M1"] ** 2)) / MISSILE_SPEED
 
 
 def optimize_single_drone_subprocess(
-    drone_num, excluded_intervals_data=None, max_retries=10
+    drone_num,
+    excluded_intervals_data=None,
+    max_retries=10,
+    custom_lb=None,
+    custom_ub=None,
 ):
     """
     使用subprocess运行单个无人机的PSO优化，避免进程池累积
@@ -24,15 +28,14 @@ def optimize_single_drone_subprocess(
         drone_num: 无人机编号 (1, 2, 3)
         excluded_intervals_data: 已被其他无人机占用的时间区间数据，格式为intervals的字符串表示
         max_retries: 最大重试次数
+        custom_lb: 自定义下界 [vx_min, vy_min, drop_t_min, bomb_t_min]，None则使用默认值
+        custom_ub: 自定义上界 [vx_max, vy_max, drop_t_max, bomb_t_max]，None则使用默认值
 
     Returns:
         (best_params, best_coverage_time, coverage_interval_data)
     """
 
     for retry in range(max_retries):
-        # 每次重试使用不同的随机种子
-        random_seed = random.randint(1, 100000)
-
         cmd = f"""
 import sys
 sys.path.append('.')
@@ -46,13 +49,12 @@ from utils.Q4cal_mask_time import simgle_f_cal_mask_time
 from utils.base import *
 from utils.geo import *
 
-# 设置随机种子
-np.random.seed({random_seed})
-
 # 计算参数
 max_time = math.sqrt(sum(MISSILES_INITIAL["M1"] ** 2)) / MISSILE_SPEED
 drone_num = {drone_num}
 excluded_intervals_data = {repr(excluded_intervals_data)}
+custom_lb = {custom_lb}
+custom_ub = {custom_ub}
 
 # 解析已有区间数据
 excluded_intervals = None
@@ -98,9 +100,16 @@ def constraint(x):
         return 1  # 违反约束
     return -1  # 满足约束
 
-# 边界 - 根据约束条件设置
-lb = [-140, -140, 0, 0]  
-ub = [140, 140, max_time, max_time]
+# 边界 - 根据自定义参数或默认约束条件设置
+if custom_lb is not None:
+    lb = custom_lb
+else:
+    lb = [-140, -140, 0, 0]
+
+if custom_ub is not None:
+    ub = custom_ub  
+else:
+    ub = [140, 140, max_time, max_time]
 ueq = (constraint,)
 
 w = 0.9
@@ -169,6 +178,35 @@ print(json.dumps(result))
     return None, 0, None
 
 
+def get_drone_search_bounds(drone_num):
+    """
+    根据无人机编号获取合适的搜索边界
+    基于几何位置分析：导弹M1从(20000,0,2000)飞向(0,0,0)，真目标在(0,200,0)
+
+    Args:
+        drone_num: 无人机编号 (1, 2, 3)
+
+    Returns:
+        (custom_lb, custom_ub): 自定义的下界和上界 [vx_min, vy_min, drop_t_min, bomb_t_min]
+    """
+    max_time = math.sqrt(sum(MISSILES_INITIAL["M1"] ** 2)) / MISSILE_SPEED
+
+    if drone_num == 1:  # FY1位置: (17800, 0, 1800) - 在导弹路径上，相对灵活
+        # FY1可以各个方向移动，但偏向左移更容易拦截
+        custom_lb = [-140, -30, 0, 0]
+        custom_ub = [140, 30, max_time, max_time]
+    elif drone_num == 2:  # FY2位置: (12000, 1400, 1400) - 右上方
+        # FY2需要向左下移动才能接近拦截路径，限制向右上移动
+        custom_lb = [-140, -140, 0, 0]
+        custom_ub = [50, 50, max_time, max_time]  # 允许少量右上移动但主要向左下
+    else:  # FY3位置: (6000, -3000, 700) - 右下方
+        # FY3需要向左上移动才能接近拦截路径，限制向右下移动
+        custom_lb = [-140, -50, 0, 0]  # 允许少量向下但主要向上
+        custom_ub = [50, 140, max_time, max_time]
+
+    return custom_lb, custom_ub
+
+
 def greedy_optimize_q4():
     """
     使用贪心策略优化Q4问题
@@ -203,8 +241,18 @@ def greedy_optimize_q4():
                     str(interval) for interval in selected_intervals
                 ]
 
+            # 根据无人机位置和需求设置搜索边界
+            custom_lb, custom_ub = get_drone_search_bounds(drone_num)
+
+            # 可以在这里手动覆盖特定无人机的边界
+            # 例如: 如果想让FY2只向左移动，可以设置:
+            # if drone_num == 2: custom_ub[0] = 0  # x方向上界设为0
+
             params, coverage_time, interval = optimize_single_drone_subprocess(
-                drone_num, excluded_intervals_data
+                drone_num,
+                excluded_intervals_data,
+                custom_lb=custom_lb,
+                custom_ub=custom_ub,
             )
 
             if params is not None:
