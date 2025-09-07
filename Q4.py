@@ -190,16 +190,16 @@ def get_drone_search_bounds(drone_num):
 
     if drone_num == 1:  # FY1位置: (17800, 0, 1800) - 在导弹路径上，相对灵活
         # FY1可以各个方向移动，但偏向左移更容易拦截
-        custom_lb = [-140, -30, 0, 0]
+        custom_lb = [-140, 0, 0, 0]
         custom_ub = [140, 30, max_time, max_time]
     elif drone_num == 2:  # FY2位置: (12000, 1400, 1400) - 右上方
         # FY2需要向左下移动才能接近拦截路径，限制向右上移动
         custom_lb = [-140, -140, 0, 0]
-        custom_ub = [50, 50, max_time, max_time]  # 允许少量右上移动但主要向左下
+        custom_ub = [90, 0, max_time, max_time]  # 允许少量右上移动但主要向左下
     else:  # FY3位置: (6000, -3000, 700) - 右下方
         # FY3需要向左上移动才能接近拦截路径，限制向右下移动
-        custom_lb = [-140, -50, 0, 0]  # 允许少量向下但主要向上
-        custom_ub = [50, 140, max_time, max_time]
+        custom_lb = [-140, 0, 0, 0]  # 允许少量向下但主要向上
+        custom_ub = [90, 140, max_time, max_time]
 
     return custom_lb, custom_ub
 

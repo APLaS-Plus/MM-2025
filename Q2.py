@@ -29,4 +29,5 @@ print(-pso.gbest_y.item())
 plt.plot(pso.gbest_y_hist)
 plt.savefig("run/Q2_loss.png")
 
-# best_x is  [-70.40359495   0.           1.71457692] best_y is [-4.44587076676170]
+#  Vx, drop, bomb: [-70.09965038   0.           2.46359669]
+# 3.131565782891446
