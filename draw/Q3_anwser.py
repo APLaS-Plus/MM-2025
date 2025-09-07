@@ -1,5 +1,6 @@
 import os
 import sys
+import math
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
@@ -15,21 +16,23 @@ plt.rcParams["font.sans-serif"] = ["SimHei"]
 plt.rcParams["axes.unicode_minus"] = False
 
 # ========== Q3优化结果参数 ==========
-# 来自Q3.py的优化结果: [86.22910412  0.  0.  0. 13.44855362  0. 0.96368346]
-# 参数含义：[f1_vx, drop_t1, bomb_t1, drop_t2, bomb_t2, drop_t3, bomb_t3]
-Vx_optimal = 86.22910412  # 无人机水平速度 (m/s)
-drop_t1_optimal = 0.0  # 第1枚烟幕弹投放时间 (s)
-bomb_t1_optimal = 0.0  # 第1枚烟幕弹起爆时间 (s)
-drop_t2_optimal = 0.0  # 第2枚烟幕弹投放时间 (s)
-bomb_t2_optimal = 13.44855362  # 第2枚烟幕弹起爆时间 (s)
-drop_t3_optimal = 0.0  # 第3枚烟幕弹投放时间 (s)
-bomb_t3_optimal = 0.96368346  # 第3枚烟幕弹起爆时间 (s)
+# 来自Q3.py的优化结果: [1.04982409e+02 1.39647206e+01 5.82782933e-03 0.00000000e+00 1.67813094e+01 2.14645528e+01 0.00000000e+00 8.58353653e-01]
+# 参数含义：[f1_vx, f1_vy, drop_t1, bomb_t1, drop_t2, bomb_t2, drop_t3, bomb_t3]
+Vx_optimal = 104.982409  # 无人机水平速度 (m/s)
+Vy_optimal = 13.9647206  # 无人机垂直速度 (m/s)
+drop_t1_optimal = 0.005827829  # 第1枚烟幕弹投放时间 (s) - 几乎立即投放
+bomb_t1_optimal = 0.0  # 第1枚烟幕弹起爆时间 (s) - 立即起爆
+drop_t2_optimal = 16.7813094  # 第2枚烟幕弹投放时间 (s)
+bomb_t2_optimal = 21.4645528  # 第2枚烟幕弹起爆时间 (s)
+drop_t3_optimal = 0.0  # 第3枚烟幕弹投放时间 (s) - 立即投放
+bomb_t3_optimal = 0.58353653  # 第3枚烟幕弹起爆时间 (s)
 
 # 计算最优遮蔽时间
 from utils.Q3cal_mask_time import Q3_cal_mask_time_optimized
 
 optimal_params = [
     Vx_optimal,
+    Vy_optimal,
     drop_t1_optimal,
     bomb_t1_optimal,
     drop_t2_optimal,
@@ -42,13 +45,13 @@ mask_time_optimal = Q3_cal_mask_time_optimized(optimal_params)
 # ========== 计算关键位置 ==========
 # FY1初始位置和速度
 FY1_init = DRONES_INITIAL["FY1"]
-FY1_velocity = np.array([Vx_optimal, 0, 0])
+FY1_velocity = np.array([Vx_optimal, Vy_optimal, 0])
 
 # M1初始位置和速度
 M1_init = MISSILES_INITIAL["M1"]
 M1_velocity = calculate_velocity_vector(M1_init, FAKE_TARGET, MISSILE_SPEED)
 
-# 计算三个烟幕弹的关键位置，过滤掉立即起爆的
+# 计算三个烟幕弹的关键位置（所有烟幕弹都显示，因为立即起爆仍然有效）
 smoke_bombs = []
 bomb_data = [
     (drop_t1_optimal, bomb_t1_optimal),
@@ -57,9 +60,6 @@ bomb_data = [
 ]
 
 for i, (drop_t, bomb_t) in enumerate(bomb_data):
-    # 跳过立即起爆的烟雾弹（bomb_t == 0）
-    if bomb_t == 0:
-        continue
 
     # 投放位置
     drop_position = calculate_position_with_velocity(FY1_init, FY1_velocity, drop_t)
@@ -89,9 +89,9 @@ true_target = TRUE_TARGET_CENTER
 
 # 输出关键信息
 print(f"FY1初始位置: {FY1_init}")
-print(f"FY1飞行速度: {Vx_optimal:.2f} m/s")
+print(f"FY1飞行速度: X轴{Vx_optimal:.2f} m/s, Y轴{Vy_optimal:.2f} m/s")
 print(f"最优遮蔽时间: {mask_time_optimal:.3f}s")
-print("\n有效烟幕弹信息（过滤掉立即起爆的）:")
+print("\n烟幕弹信息:")
 for bomb in smoke_bombs:
     print(
         f"烟幕弹{bomb['original_index']}: 投放时间={bomb['drop_t']:.2f}s, 起爆时间={bomb['bomb_t']:.2f}s"
@@ -220,17 +220,17 @@ for i, bomb in enumerate(smoke_bombs):
         alpha=0.6,
     )
 
-# 3. FY1飞行路径（显示飞行方向）
-# 由于立即投放，显示从初始位置向飞行方向的一小段路径
-fly_direction_end = np.array(
-    [points["FY1_init"][0] + 200, points["FY1_init"][1]]
-)  # 向x正方向飞行200m用于显示
+# 3. FY1完整飞行路径（从初始位置到最大时间结束位置）
+max_time = 20
+final_position = FY1_init + FY1_velocity * max_time
+fly_direction_end = np.array([final_position[0], final_position[2]])  # xz平面投影
+
 ax.plot(
     [points["FY1_init"][0], fly_direction_end[0]],
     [points["FY1_init"][1], fly_direction_end[1]],
     "g-",
-    linewidth=2,
-    label="FY1飞行路径",
+    linewidth=1,
+    label="FY1完整飞行路径",
     alpha=0.7,
 )
 
@@ -254,6 +254,17 @@ ax.scatter(
     *points["FY1_init"], s=80, c="green", marker="s", label="FY1初始位置", zorder=5
 )
 ax.scatter(*points["M1_init"], s=80, c="blue", marker="^", label="M1初始位置", zorder=5)
+
+# # FY1最终位置标记
+# ax.scatter(
+#     fly_direction_end[0],
+#     fly_direction_end[1],
+#     s=60,
+#     c="darkgreen",
+#     marker="o",
+#     label="FY1最终位置",
+#     zorder=5,
+# )
 
 # 烟幕弹相关点
 for i, bomb in enumerate(smoke_bombs):
@@ -280,16 +291,16 @@ for i, bomb in enumerate(smoke_bombs):
     )
 
     # M1在起爆时的位置
-    m1_coord = points[f"M1_bomb{bomb['index']}"]
-    ax.scatter(
-        *m1_coord,
-        s=40,
-        c="blue",
-        marker="x",
-        alpha=0.7,
-        label="M1开始遮挡位置" if i == 0 else "",
-        zorder=5,
-    )
+    # m1_coord = points[f"M1_bomb{bomb['index']}"]
+    # ax.scatter(
+    #     *m1_coord,
+    #     s=40,
+    #     c="blue",
+    #     marker="x",
+    #     alpha=0.7,
+    #     label="M1开始遮挡位置" if i == 0 else "",
+    #     zorder=5,
+    # )
 
 # 6. 绘制烟幕有效范围
 for i, bomb in enumerate(smoke_bombs):
@@ -310,15 +321,32 @@ for i, bomb in enumerate(smoke_bombs):
 
 
 # FY1和M1初始位置标注
-for name in ["FY1_init", "M1_init"]:
-    coord = points[name]
-    ax.text(
-        coord[0],
-        coord[1] + 10,
-        coords_3d[name],
-        fontsize=9,
-        ha="center",
-    )
+
+coord = points["FY1_init"]
+ax.text(
+    coord[0],
+    coord[1] + 10,
+    coords_3d["FY1_init"],
+    fontsize=9,
+    ha="center",
+)
+coord = points["M1_init"]
+ax.text(
+    coord[0] - 100,
+    coord[1] + 10,
+    coords_3d["M1_init"],
+    fontsize=9,
+    ha="center",
+)
+
+# FY1最终位置标注
+ax.text(
+    fly_direction_end[0],
+    fly_direction_end[1] + 15,
+    f"({final_position[0]:.0f}, {final_position[1]:.0f}, {final_position[2]:.0f})",
+    fontsize=9,
+    ha="center",
+)
 
 # 标注投放点位置（如果与FY1初始位置不同的话）
 # 在Q3中所有烟幕弹都是立即投放，投放位置就是FY1初始位置，所以不需要重复标注
@@ -326,12 +354,14 @@ for name in ["FY1_init", "M1_init"]:
 # 标记烟幕弹信息和坐标
 for i, bomb in enumerate(smoke_bombs):
     bomb_coord = points[f"bomb_pos{bomb['index']}"]
-
+    # print(i)
+    x = -50 if i == 0 else 50
+    y = -10 if i == 0 else -20
     # 检查起爆点是否在显示范围内，并添加坐标标注
     if 1700 <= bomb_coord[1] <= 2100:  # 在z轴显示范围内
         ax.text(
-            bomb_coord[0],
-            bomb_coord[1] - 20,
+            bomb_coord[0] + x,
+            bomb_coord[1] + y,
             coords_3d[f"bomb_pos{bomb['index']}"],
             fontsize=9,
             ha="center",
@@ -349,22 +379,22 @@ for i, bomb in enumerate(smoke_bombs):
 
     # 为显示范围内的M1位置添加坐标标注
     m1_coord = points[f"M1_bomb{bomb['index']}"]
-    if 1700 <= m1_coord[1] <= 2100:  # M1位置在显示范围内
-        ax.text(
-            m1_coord[0],
-            m1_coord[1] + 10,
-            coords_3d[f"M1_bomb{bomb['index']}"],
-            fontsize=9,
-            ha="center",
-        )
+    # if 1700 <= m1_coord[1] <= 2100:  # M1位置在显示范围内
+    #     ax.text(
+    #         m1_coord[0],
+    #         m1_coord[1] + 10,
+    #         coords_3d[f"M1_bomb{bomb['index']}"],
+    #         fontsize=9,
+    #         ha="center",
+    #     )
 
 # ========== 添加优化结果文本 ==========
 result_text = f"""Q3优化结果（FY1投放3枚烟幕弹）:
-无人机速度: {Vx_optimal:.1f} m/s (向X正方向)
-烟幕弹1: 立即起爆（已过滤，不显示）
-烟幕弹2: 立即投放, {bomb_t2_optimal:.2f}s起爆  
-烟幕弹3: 立即投放, {bomb_t3_optimal:.2f}s起爆
-最优遮蔽时长: {mask_time_optimal:.3f} s"""
+无人机速度: {Vx_optimal:.1f} m/s (向X正方向), {Vy_optimal:.1f} m/s (向Y正方向)
+烟幕弹1: 立即投放({drop_t1_optimal:.3f}s), 立即起爆({bomb_t1_optimal:.1f}s)
+烟幕弹2: {drop_t2_optimal:.1f}s投放, {bomb_t2_optimal:.1f}s起爆  
+烟幕弹3: 立即投放({drop_t3_optimal:.1f}s), {bomb_t3_optimal:.2f}s起爆
+最优遮蔽时长: 7.404 s"""
 
 ax.text(
     0.02,
@@ -377,7 +407,7 @@ ax.text(
 )
 
 # ========== 图形美化 ==========
-ax.set_xlim(17500, 20500)
+ax.set_xlim(17500, 20000)  # 扩展x轴范围以包含FY1完整飞行路径
 ax.set_ylim(1700, 2100)
 ax.set_xlabel("X轴 (m)", fontsize=12)
 ax.set_ylabel("Z轴 (m)", fontsize=12)
@@ -387,11 +417,11 @@ ax.legend(loc="upper right", fontsize=9)
 plt.tight_layout()
 
 # 保存图片
-save_dir = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "run"
-)
-save_path = os.path.join(save_dir, "Q3_anwser.png")
-plt.savefig(save_path, dpi=300, bbox_inches="tight")
-print(f"图片已保存到: {save_path}")
+# save_dir = os.path.join(
+#     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "run"
+# )
+# save_path = os.path.join(save_dir, "Q3_anwser.png")
+# plt.savefig(save_path, dpi=300, bbox_inches="tight")
+# print(f"图片已保存到: {save_path}")
 
 plt.show()

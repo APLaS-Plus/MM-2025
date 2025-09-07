@@ -265,7 +265,7 @@ def Q3_cal_mask_time_optimized(input_data, num_samples=2000):
 
 
 vec_ueq = lambda x: 70.0**2 <= x[0]**2 + x[1]**2 <= 140.0**2
-time_ueq = lambda x: x[0] <= x[1] and x[0] + x[1] <= 66.99917080747261
+time_ueq = lambda x: x[0] + x[1] <= 66.99917080747261
 
 Q3_constraint_ueq = lambda x: (
     -1

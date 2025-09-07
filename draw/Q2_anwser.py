@@ -15,16 +15,17 @@ plt.rcParams["font.sans-serif"] = ["SimHei"]
 plt.rcParams["axes.unicode_minus"] = False
 
 # ========== Q2优化结果参数 ==========
-# 来自Q2.py的优化结果: Vx, drop, bomb: [-70.09965038   0.           2.46359669]
-Vx_optimal = -70.09965038  # 无人机水平速度 (m/s)，负值表示向x轴负方向
+# 来自Q2.py的优化结果: Vx, vy, drop, bomb: [137.58643211  16.36820701   0.           0.73574335]
+Vx_optimal = 137.58643211  # 无人机水平速度 (m/s)
+Vy_optimal = 16.36820701  # 无人机垂直速度 (m/s)
 drop_t_optimal = 0.0  # 投放时间 (s)
-bomb_t_optimal = 2.46359669  # 起爆时间 (s)
-mask_time_optimal = 3.131565782891446  # 最优遮蔽时间 (s)
+bomb_t_optimal = 0.73574335  # 起爆时间 (s)
+mask_time_optimal = 4.782391195597799  # 最优遮蔽时间 (s)
 
 # ========== 计算关键位置 ==========
 # FY1初始位置和速度
 FY1_init = DRONES_INITIAL["FY1"]
-FY1_velocity = np.array([Vx_optimal, 0, 0])
+FY1_velocity = np.array([Vx_optimal, Vy_optimal, 0])
 
 # M1初始位置和速度
 M1_init = MISSILES_INITIAL["M1"]
@@ -159,13 +160,22 @@ for i, name in enumerate(point_names):
     x_offset = 150 if coord[0] < 10000 else -150
     z_offset = 50 if name not in ["M1_bomb", "bomb_pos"] else -80
 
-    ax.text(
-        coord[0],
-        coord[1] + 20,
-        coords_3d[name],
-        fontsize=9,
-        ha="center",
-    )
+    if name == "bomb_pos":
+        ax.text(
+            coord[0],
+            coord[1] - 10,
+            coords_3d[name],
+            fontsize=9,
+            ha="center",
+        )
+    else:
+        ax.text(
+            coord[0],
+            coord[1] + 20,
+            coords_3d[name],
+            fontsize=9,
+            ha="center",
+        )
 
 # 6. 绘制烟幕有效范围（应该与起爆点重合）
 smoke_circle = Circle(
@@ -182,7 +192,7 @@ ax.add_patch(smoke_circle)
 
 # ========== 添加优化结果文本 ==========
 result_text = f"""Q2优化结果:
-无人机速度: {abs(Vx_optimal):.1f} m/s (向X负方向)
+无人机速度: {abs(Vx_optimal):.1f} m/s (向X正方向), {abs(Vy_optimal):.1f} m/s (向Y正方向)
 投放时间: {drop_t_optimal:.1f} s (立即投放)
 起爆时间: {bomb_t_optimal:.2f} s
 最优遮蔽时长: {mask_time_optimal:.3f} s"""

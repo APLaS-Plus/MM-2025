@@ -46,26 +46,26 @@ def get_drone_missile_search_bounds(drone_num, missile_target):
     """
     根据无人机编号和目标导弹获取合适的搜索边界
     基于几何位置分析，设置智能搜索边界提高PSO效率
-    
+
     Args:
         drone_num: 无人机编号 (1-5)
         missile_target: 目标导弹 ('M1', 'M2', 'M3')
-        
+
     Returns:
         (custom_lb, custom_ub): 自定义的下界和上界 [vx_min, vy_min, ...]
     """
     # 计算目标导弹的最大飞行时间
     missile_pos = MISSILES_INITIAL[missile_target]
-    max_time = math.sqrt(sum(missile_pos ** 2)) / MISSILE_SPEED
-    
+    max_time = math.sqrt(sum(missile_pos**2)) / MISSILE_SPEED
+
     # 获取无人机位置
     drone_pos = DRONES_INITIAL[f"FY{drone_num}"]
-    
+
     # 基本原则：
     # 1. 导弹都飞向假目标(0,0,0)，真目标在(0,200,0)
     # 2. 无人机需要在导弹路径和真目标之间制造拦截
     # 3. 根据无人机当前位置和导弹路径设置优先移动方向
-    
+
     if missile_target == "M1":  # M1: (20000, 0, 2000) -> (0, 0, 0)
         if drone_num == 1:  # FY1(17800, 0, 1800) - 最接近M1路径
             custom_lb = [-140, -20, 0, 0] + [0, 0] * 2  # 允许小幅y方向移动
@@ -76,13 +76,13 @@ def get_drone_missile_search_bounds(drone_num, missile_target):
         elif drone_num == 3:  # FY3(6000, -3000, 700) - 远距离，y负方向
             custom_lb = [-30, 0, 0, 0] + [0, 0] * 2  # 需要向左上移动
             custom_ub = [30, 140, max_time, max_time] + [max_time, max_time] * 2
-        elif drone_num == 4:  # FY4(11000, 2000, 1800) - 中距离，y正方向  
+        elif drone_num == 4:  # FY4(11000, 2000, 1800) - 中距离，y正方向
             custom_lb = [-50, -40, 0, 0] + [0, 0] * 2  # 向左下移动
             custom_ub = [30, 20, max_time, max_time] + [max_time, max_time] * 2
         else:  # FY5(13000, -2000, 1300) - 中距离，y负方向
             custom_lb = [-50, 0, 0, 0] + [0, 0] * 2  # 向左上移动
             custom_ub = [30, 140, max_time, max_time] + [max_time, max_time] * 2
-            
+
     elif missile_target == "M2":  # M2: (19000, 600, 2100) -> (0, 0, 0)
         if drone_num == 1:  # FY1(17800, 0, 1800)
             custom_lb = [-140, 0, 0, 0] + [0, 0] * 2  # 向左上移动接近M2路径
@@ -99,7 +99,7 @@ def get_drone_missile_search_bounds(drone_num, missile_target):
         else:  # FY5(13000, -2000, 1300) - 需要向上移动
             custom_lb = [-50, 30, 0, 0] + [0, 0] * 2  # 向左上移动
             custom_ub = [30, 140, max_time, max_time] + [max_time, max_time] * 2
-            
+
     else:  # M3: (18000, -600, 1900) -> (0, 0, 0)
         if drone_num == 1:  # FY1(17800, 0, 1800)
             custom_lb = [-140, -50, 0, 0] + [0, 0] * 2  # 向左下移动接近M3路径
@@ -116,7 +116,7 @@ def get_drone_missile_search_bounds(drone_num, missile_target):
         else:  # FY5(13000, -2000, 1300) - 已在良好位置
             custom_lb = [-50, -20, 0, 0] + [0, 0] * 2  # 向左移动，轻微调整y
             custom_ub = [30, 30, max_time, max_time] + [max_time, max_time] * 2
-            
+
     return custom_lb, custom_ub
 
 
@@ -288,7 +288,7 @@ ub = custom_ub
 w = 0.9
 c = (1 - w) / 2
 set_run_mode(func, "multiprocessing")
-pso = PSO(func=func, n_dim=n_dim, pop=64, max_iter=150, lb=lb, ub=ub, 
+pso = PSO(func=func, n_dim=n_dim, pop=96, max_iter=150, lb=lb, ub=ub, 
           constraint_ueq=(constraint,), c1=c, c2=c, w=w)
 pso.run()
 
@@ -324,7 +324,7 @@ print(json.dumps(result))
                 [sys.executable, "-c", cmd],
                 capture_output=True,
                 text=True,
-                timeout=300,
+                timeout=9999,
             )
 
             if result.returncode == 0:
