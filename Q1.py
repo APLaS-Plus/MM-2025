@@ -82,10 +82,10 @@ print(f"Smoke center vector: St(t) = {St_vec}")
 D_vec = Mt_vec - true_target  # 方向向量（从真目标指向导弹）
 E_vec = true_target - St_vec  # 真目标到球心向量
 
-# 计算二次不等式系数
-D_dot_D = D_vec.dot(D_vec).simplify()  # |D|²
-E_dot_D = E_vec.dot(D_vec).simplify()  # E·D
-E_dot_E = E_vec.dot(E_vec).simplify()  # |E|²
+# 计算二次不等式系数（避免过度simplify提升速度）
+D_dot_D = D_vec.dot(D_vec)  # |D|²
+E_dot_D = E_vec.dot(D_vec)  # E·D
+E_dot_E = E_vec.dot(E_vec)  # |E|²
 
 print(f"\n线段与球体相交计算:")
 print(f"|D|² = {D_dot_D}")
@@ -105,30 +105,44 @@ print(f"a = {a_coeff}")
 print(f"b = {b_coeff}")
 print(f"c = {c_coeff}")
 
-# s* = clamp(-b/(2a), 0, 1)
-s_unclamped = -b_coeff / (2 * a_coeff)
-s_star = sp.Min(1, sp.Max(0, s_unclamped))
+# ================== 线段到球心最小距离法（分段解析优化）==================
+# s* = clamp(-b/(2a), 0, 1) 的分段实现，避免符号Min/Max运算
+# 假设 a > 0（|D|²恒正），分三种情况：
+# 1. b ≥ 0: s* = 0, g_min = c
+# 2. -2a ≤ b < 0: s* = -b/(2a), g_min = c - b²/(4a)
+# 3. b < -2a: s* = 1, g_min = a + b + c
 
-# 线段到球心的最小二乘距离 g_min(t) = a*s*^2 + b*s* + c
-g_min = a_coeff * s_star**2 + b_coeff * s_star + c_coeff
+print(f"\n线段到球心最小距离法（分段优化）:")
 
-# 当判别式 ≥ 0 且 a > 0 时，不等式有解
-# 解为：s ∈ [(-b - √Δ)/(2a), (-b + √Δ)/(2a)] ∩ [0,1]
+# 预计算关键表达式，避免重复计算
+a_plus_b_plus_c = a_coeff + b_coeff + c_coeff
+c_minus_b_sq_over_4a = c_coeff - b_coeff**2 / (4 * a_coeff)
 
-s = sp.Symbol("s", real=True)
-quadratic_ineq = a_coeff * s**2 + b_coeff * s + c_coeff <= 0
+# 三段遮蔽条件的时间区间求解
+print(f"分段求解遮蔽条件 g_min(t) ≤ 0:")
 
-# 在参数域[0,1]内求解二次不等式
-s_domain = Interval(0, 1)
-s_solutions = sp.solveset(quadratic_ineq, s, domain=s_domain)
+# 段1: b ≥ 0, 遮蔽条件 c ≤ 0
+cond1_mask = sp.solveset(c_coeff <= 0, t, domain=t_domain)
+cond1_time = sp.solveset(b_coeff >= 0, t, domain=t_domain)
+interval1 = cond1_mask.intersect(cond1_time)
+print(f"段1 (b≥0, c≤0): {interval1}")
 
-print(f"\n参数s的解集（s ∈ [0,1]）: {s_solutions}")
+# 段2: -2a ≤ b < 0, 遮蔽条件 c - b²/(4a) ≤ 0
+cond2_mask = sp.solveset(c_minus_b_sq_over_4a <= 0, t, domain=t_domain)
+cond2_time_lower = sp.solveset(b_coeff + 2 * a_coeff >= 0, t, domain=t_domain)
+cond2_time_upper = sp.solveset(b_coeff < 0, t, domain=t_domain)
+cond2_time = cond2_time_lower.intersect(cond2_time_upper)
+interval2 = cond2_mask.intersect(cond2_time)
+print(f"段2 (-2a≤b<0, c-b²/(4a)≤0): {interval2}")
 
-# 对于每个时刻t，检查是否存在s使得线段与球相交
-# 即：存在s ∈ [0,1]使得二次不等式成立
-# 以 g_min <= 0 为遮蔽充要条件，并在 t∈(0,20] 内求解
-mask_set = sp.solve_univariate_inequality(g_min <= 0, t, relational=False)
-intersection_intervals = mask_set.intersect(t_domain)
+# 段3: b < -2a, 遮蔽条件 a + b + c ≤ 0
+cond3_mask = sp.solveset(a_plus_b_plus_c <= 0, t, domain=t_domain)
+cond3_time = sp.solveset(b_coeff + 2 * a_coeff < 0, t, domain=t_domain)
+interval3 = cond3_mask.intersect(cond3_time)
+print(f"段3 (b<-2a, a+b+c≤0): {interval3}")
+
+# 合并所有有效区间
+intersection_intervals = interval1.union(interval2).union(interval3)
 
 print(f"\n相交时间区间求解:")
 print(f"相交条件（判别式≥0）: {intersection_intervals}")
@@ -143,7 +157,7 @@ if intersection_intervals != sp.S.EmptySet and intersection_intervals.measure !=
 else:
     print(f"\n最终结果:")
     print(f"无有效遮蔽时间")
-    
+
 # FY1_init_position: [17800     0  1800]
 # FY_target: [   0    0 1800]
 # FY1_V: [-120.    0.    0.]
