@@ -14,8 +14,8 @@ print(f"max_time: {max_time}")
 def func(x):
     return -Q3_cal_mask_time_optimized(x)
 
-lb = [-140] + [0] * 6
-ub = [140] + [max_time] * 6
+lb = [-140, 0] + [0] * 6
+ub = [140, 30] + [max_time] * 6
 
 ueq = (Q3_constraint_ueq,)
 # print(type(ueq))
@@ -24,7 +24,7 @@ w = 0.9
 c = (1 - w) / 2
 
 set_run_mode(func, "multiprocessing")
-pso = PSO(func=func, n_dim=7, pop=90, max_iter=200, lb=lb, ub=ub, constraint_ueq=ueq, c1=c, c2=c, w=w, verbose=True)
+pso = PSO(func=func, n_dim=8, pop=90, max_iter=200, lb=lb, ub=ub, constraint_ueq=ueq, c1=c, c2=c, w=w, verbose=True)
 
 pso.run()
 print('best_x is ', pso.gbest_x, 'best_y is', pso.gbest_y)

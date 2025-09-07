@@ -168,8 +168,22 @@ print(json.dumps(result))
 
             except Exception as e:
                 print(f"  FY{drone_num}第{retry+1}次尝试解析失败: {e}")
+                print(f"  stdout输出: {result.stdout[:500]}...")  # 显示前500字符
         else:
-            print(f"  FY{drone_num}第{retry+1}次尝试subprocess失败, returncode: {result.returncode}")
+            # 子进程报错监察机制
+            print(
+                f"  FY{drone_num}第{retry+1}次尝试subprocess失败, returncode: {result.returncode}"
+            )
+
+            # 显示详细错误信息
+            if result.stderr:
+                print(f"  错误信息: {result.stderr.strip()}")
+
+            # 如果stdout有内容，也显示（可能包含有用的调试信息）
+            if result.stdout:
+                print(
+                    f"  输出内容: {result.stdout.strip()[:300]}..."
+                )  # 限制长度避免太长
 
     # 所有重试都失败了
     print(f"FY{drone_num}经过{max_retries}次尝试仍未找到有效解")
@@ -204,8 +218,10 @@ def get_drone_search_bounds(drone_num):
 
     return custom_lb, custom_ub
 
+
 # {'best_params': [-21.69862486599209, -124.88320592862657, 4.552258119734789, 6.371762423949579], 'best_coverage_time': 4.392196098049024, 'coverage_intervals': [[5.91295647823912, 10.305152576288144]]}
 #   FY2第5次尝试成功，遮蔽时间: 4.3922s
+
 
 def greedy_optimize_q4():
     """
@@ -324,3 +340,8 @@ if __name__ == "__main__":
 
 # {'best_params': [-21.69862486599209, -124.88320592862657, 4.552258119734789, 6.371762423949579], 'best_coverage_time': 4.392196098049024, 'coverage_intervals': [[5.91295647823912, 10.305152576288144]]}
 #   FY2第5次尝试成功，遮蔽时间: 4.3922s
+
+# 选择顺序: [1, 2]
+# 总遮蔽时间: 8.5543s
+# FY1: vx=137.68, vy=23.18, drop_t=0.00, bomb_t=0.39
+# FY2: vx=-50.00, vy=-115.13, drop_t=5.20, bomb_t=6.76

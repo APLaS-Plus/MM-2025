@@ -219,8 +219,11 @@ def merge_intervals_q4(intervals):
     if not intervals:
         return 0.0
 
+    # 统一格式为tuple，避免list和tuple混合导致排序错误
+    normalized_intervals = [tuple(interval) for interval in intervals]
+    
     # 按起始时间排序
-    sorted_intervals = sorted(intervals)
+    sorted_intervals = sorted(normalized_intervals)
     merged = [sorted_intervals[0]]
 
     for current in sorted_intervals[1:]:

@@ -14,16 +14,16 @@ print(f"max_time: {max_time}")
 def func(x):
     return -Q2_cal_mask_time_optimized(x)
 
-lb = [-140, 0, 0]
-ub = [140, max_time, max_time]
+lb = [-140, 0,0, 0]
+ub = [140, 30, max_time, max_time]
 
 ueq = (Q2_constraint_ueq,)
 # print(type(ueq))
 
 set_run_mode(func, "multiprocessing")
-pso = PSO(func=func, n_dim=3, pop=96, max_iter=200, lb=lb, ub=ub, constraint_ueq=ueq, c1=1, c2=1, w=0.9)
+pso = PSO(func=func, n_dim=4, pop=96, max_iter=200, lb=lb, ub=ub, constraint_ueq=ueq, c1=1, c2=1, w=0.9, verbose=True)
 pso.run()
-print(f" Vx, drop, bomb: {pso.gbest_x}")
+print(f" Vx, vy, drop, bomb: {pso.gbest_x}")
 print(-pso.gbest_y.item())
 
 plt.plot(pso.gbest_y_hist)

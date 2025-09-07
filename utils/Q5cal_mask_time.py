@@ -106,6 +106,7 @@ def merge_intervals_q5(intervals):
     if not intervals:
         return 0.0
 
+    intervals = [tuple(interval) for interval in intervals]
     # 按起始时间排序
     sorted_intervals = sorted(intervals)
     merged = [sorted_intervals[0]]

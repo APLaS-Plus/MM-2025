@@ -42,6 +42,84 @@ print(f"导弹飞行时间: {missile_flight_times}")
 """
 
 
+def get_drone_missile_search_bounds(drone_num, missile_target):
+    """
+    根据无人机编号和目标导弹获取合适的搜索边界
+    基于几何位置分析，设置智能搜索边界提高PSO效率
+    
+    Args:
+        drone_num: 无人机编号 (1-5)
+        missile_target: 目标导弹 ('M1', 'M2', 'M3')
+        
+    Returns:
+        (custom_lb, custom_ub): 自定义的下界和上界 [vx_min, vy_min, ...]
+    """
+    # 计算目标导弹的最大飞行时间
+    missile_pos = MISSILES_INITIAL[missile_target]
+    max_time = math.sqrt(sum(missile_pos ** 2)) / MISSILE_SPEED
+    
+    # 获取无人机位置
+    drone_pos = DRONES_INITIAL[f"FY{drone_num}"]
+    
+    # 基本原则：
+    # 1. 导弹都飞向假目标(0,0,0)，真目标在(0,200,0)
+    # 2. 无人机需要在导弹路径和真目标之间制造拦截
+    # 3. 根据无人机当前位置和导弹路径设置优先移动方向
+    
+    if missile_target == "M1":  # M1: (20000, 0, 2000) -> (0, 0, 0)
+        if drone_num == 1:  # FY1(17800, 0, 1800) - 最接近M1路径
+            custom_lb = [-140, -20, 0, 0] + [0, 0] * 2  # 允许小幅y方向移动
+            custom_ub = [50, 20, max_time, max_time] + [max_time, max_time] * 2
+        elif drone_num == 2:  # FY2(12000, 1400, 1400) - 中距离，y正方向
+            custom_lb = [-50, -30, 0, 0] + [0, 0] * 2  # 主要向左移动，可向下
+            custom_ub = [30, 10, max_time, max_time] + [max_time, max_time] * 2
+        elif drone_num == 3:  # FY3(6000, -3000, 700) - 远距离，y负方向
+            custom_lb = [-30, 0, 0, 0] + [0, 0] * 2  # 需要向左上移动
+            custom_ub = [30, 140, max_time, max_time] + [max_time, max_time] * 2
+        elif drone_num == 4:  # FY4(11000, 2000, 1800) - 中距离，y正方向  
+            custom_lb = [-50, -40, 0, 0] + [0, 0] * 2  # 向左下移动
+            custom_ub = [30, 20, max_time, max_time] + [max_time, max_time] * 2
+        else:  # FY5(13000, -2000, 1300) - 中距离，y负方向
+            custom_lb = [-50, 0, 0, 0] + [0, 0] * 2  # 向左上移动
+            custom_ub = [30, 140, max_time, max_time] + [max_time, max_time] * 2
+            
+    elif missile_target == "M2":  # M2: (19000, 600, 2100) -> (0, 0, 0)
+        if drone_num == 1:  # FY1(17800, 0, 1800)
+            custom_lb = [-140, 0, 0, 0] + [0, 0] * 2  # 向左上移动接近M2路径
+            custom_ub = [50, 50, max_time, max_time] + [max_time, max_time] * 2
+        elif drone_num == 2:  # FY2(12000, 1400, 1400) - 已在合适的y位置
+            custom_lb = [-50, -30, 0, 0] + [0, 0] * 2  # 主要向左移动
+            custom_ub = [30, 30, max_time, max_time] + [max_time, max_time] * 2
+        elif drone_num == 3:  # FY3(6000, -3000, 700) - 需要大幅向上移动
+            custom_lb = [-30, 50, 0, 0] + [0, 0] * 2  # 强制向左上移动
+            custom_ub = [30, 140, max_time, max_time] + [max_time, max_time] * 2
+        elif drone_num == 4:  # FY4(11000, 2000, 1800) - 已在良好位置
+            custom_lb = [-50, -20, 0, 0] + [0, 0] * 2  # 向左移动，轻微调整y
+            custom_ub = [30, 30, max_time, max_time] + [max_time, max_time] * 2
+        else:  # FY5(13000, -2000, 1300) - 需要向上移动
+            custom_lb = [-50, 30, 0, 0] + [0, 0] * 2  # 向左上移动
+            custom_ub = [30, 140, max_time, max_time] + [max_time, max_time] * 2
+            
+    else:  # M3: (18000, -600, 1900) -> (0, 0, 0)
+        if drone_num == 1:  # FY1(17800, 0, 1800)
+            custom_lb = [-140, -50, 0, 0] + [0, 0] * 2  # 向左下移动接近M3路径
+            custom_ub = [50, 0, max_time, max_time] + [max_time, max_time] * 2
+        elif drone_num == 2:  # FY2(12000, 1400, 1400) - 需要向下移动
+            custom_lb = [-50, -140, 0, 0] + [0, 0] * 2  # 向左下移动
+            custom_ub = [30, -10, max_time, max_time] + [max_time, max_time] * 2
+        elif drone_num == 3:  # FY3(6000, -3000, 700) - 已在合适的y负方向
+            custom_lb = [-30, -10, 0, 0] + [0, 0] * 2  # 向左移动，保持y负方向
+            custom_ub = [30, 50, max_time, max_time] + [max_time, max_time] * 2
+        elif drone_num == 4:  # FY4(11000, 2000, 1800) - 需要大幅向下移动
+            custom_lb = [-50, -140, 0, 0] + [0, 0] * 2  # 强制向左下移动
+            custom_ub = [30, -20, max_time, max_time] + [max_time, max_time] * 2
+        else:  # FY5(13000, -2000, 1300) - 已在良好位置
+            custom_lb = [-50, -20, 0, 0] + [0, 0] * 2  # 向左移动，轻微调整y
+            custom_ub = [30, 30, max_time, max_time] + [max_time, max_time] * 2
+            
+    return custom_lb, custom_ub
+
+
 def optimize_drone_for_missile_pso(
     drone_num, missile_target, excluded_intervals_data=None, max_smoke_bombs=3
 ):
@@ -161,10 +239,50 @@ def constraint(x):
     
     return -1
 
-# 设置优化参数
-n_dim = 2 + max_smoke_bombs * 2  # vx, vy + 每个烟幕弹的drop_t, bomb_t
-lb = [-140, -140] + [0, 0] * max_smoke_bombs
-ub = [140, 140] + [max_time, max_time] * max_smoke_bombs
+# 智能边界设置函数（在子进程内定义）
+def get_bounds(drone_num, missile_target):
+    missile_pos = MISSILES_INITIAL[missile_target]
+    max_t = math.sqrt(sum(missile_pos ** 2)) / MISSILE_SPEED
+    
+    if missile_target == "M1":
+        if drone_num == 1:
+            return [-140, -20, 0, 0] + [0, 0] * 2, [50, 20, max_t, max_t] + [max_t, max_t] * 2
+        elif drone_num == 2:
+            return [-50, -30, 0, 0] + [0, 0] * 2, [30, 10, max_t, max_t] + [max_t, max_t] * 2
+        elif drone_num == 3:
+            return [-30, 0, 0, 0] + [0, 0] * 2, [30, 140, max_t, max_t] + [max_t, max_t] * 2
+        elif drone_num == 4:
+            return [-50, -40, 0, 0] + [0, 0] * 2, [30, 20, max_t, max_t] + [max_t, max_t] * 2
+        else:
+            return [-50, 0, 0, 0] + [0, 0] * 2, [30, 140, max_t, max_t] + [max_t, max_t] * 2
+    elif missile_target == "M2":
+        if drone_num == 1:
+            return [-140, 0, 0, 0] + [0, 0] * 2, [50, 50, max_t, max_t] + [max_t, max_t] * 2
+        elif drone_num == 2:
+            return [-50, -30, 0, 0] + [0, 0] * 2, [30, 30, max_t, max_t] + [max_t, max_t] * 2
+        elif drone_num == 3:
+            return [-30, 50, 0, 0] + [0, 0] * 2, [30, 140, max_t, max_t] + [max_t, max_t] * 2
+        elif drone_num == 4:
+            return [-50, -20, 0, 0] + [0, 0] * 2, [30, 30, max_t, max_t] + [max_t, max_t] * 2
+        else:
+            return [-50, 30, 0, 0] + [0, 0] * 2, [30, 140, max_t, max_t] + [max_t, max_t] * 2
+    else:  # M3
+        if drone_num == 1:
+            return [-140, -50, 0, 0] + [0, 0] * 2, [50, 0, max_t, max_t] + [max_t, max_t] * 2
+        elif drone_num == 2:
+            return [-50, -140, 0, 0] + [0, 0] * 2, [30, -10, max_t, max_t] + [max_t, max_t] * 2
+        elif drone_num == 3:
+            return [-30, -10, 0, 0] + [0, 0] * 2, [30, 50, max_t, max_t] + [max_t, max_t] * 2
+        elif drone_num == 4:
+            return [-50, -140, 0, 0] + [0, 0] * 2, [30, -20, max_t, max_t] + [max_t, max_t] * 2
+        else:
+            return [-50, -20, 0, 0] + [0, 0] * 2, [30, 30, max_t, max_t] + [max_t, max_t] * 2
+
+# 使用智能边界
+custom_lb, custom_ub = get_bounds(drone_num, missile_target)
+n_dim = len(custom_lb)
+lb = custom_lb
+ub = custom_ub
 
 # PSO优化
 w = 0.9

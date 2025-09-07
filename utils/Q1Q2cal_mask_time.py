@@ -7,11 +7,11 @@ from utils.geo import *
 
 def Q2_cal_mask_time(input_data):
     # unzip input data
-    f1_vx, drop_t, bomb_t = input_data
+    f1_vx, f1_vy, drop_t, bomb_t = input_data
 
     # define FY1 and M1
     FY1_init_position = DRONES_INITIAL["FY1"]
-    f1_V = np.array([f1_vx, 0, 0])
+    f1_V = np.array([f1_vx, f1_vy, 0])
 
     M1_init_position = MISSILES_INITIAL["M1"]
     M1_V = calculate_velocity_vector(M1_init_position, FAKE_TARGET, MISSILE_SPEED)
@@ -126,11 +126,11 @@ def Q2_cal_mask_time_optimized(input_data, num_samples=2000):
         float: 遮蔽时间长度
     """
     # unzip input data
-    f1_vx, drop_t, bomb_t = input_data
+    f1_vx, f1_vy, drop_t, bomb_t = input_data
 
     # define FY1 and M1
     FY1_init_position = DRONES_INITIAL["FY1"]
-    f1_V = np.array([f1_vx, 0, 0])
+    f1_V = np.array([f1_vx, f1_vy, 0])
 
     M1_init_position = MISSILES_INITIAL["M1"]
     M1_V = calculate_velocity_vector(M1_init_position, FAKE_TARGET, MISSILE_SPEED)
@@ -205,4 +205,4 @@ def Q2_cal_mask_time_optimized(input_data, num_samples=2000):
     return total_duration
 
 
-Q2_constraint_ueq = lambda x: -1 if 70.0 <= abs(x[0]) <= 140.0 and x[2] > x[1] else 1
+Q2_constraint_ueq = lambda x: -1 if 70.0**2 <= x[0]**2 + x[1]**2 <= 140.0**2 and x[3] > x[2] else 1

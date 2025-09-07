@@ -7,11 +7,11 @@ from utils.geo import *
 
 def simgle_cal_mask_time(input_data):
     # unzip input data
-    f1_vx, drop_t, bomb_t = input_data
+    f1_vx, f1_vy, drop_t, bomb_t = input_data
 
     # define FY1 and M1
     FY1_init_position = DRONES_INITIAL["FY1"]
-    f1_V = np.array([f1_vx, 0, 0])
+    f1_V = np.array([f1_vx, f1_vy, 0])
 
     M1_init_position = MISSILES_INITIAL["M1"]
     M1_V = calculate_velocity_vector(M1_init_position, FAKE_TARGET, MISSILE_SPEED)
@@ -122,11 +122,11 @@ def simgle_cal_mask_time_optimized(input_data, num_samples=2000):
         list: 相交时间区间列表 [(start1, end1), (start2, end2), ...]
     """
     # unzip input data
-    f1_vx, drop_t, bomb_t = input_data
+    f1_vx, f1_vy, drop_t, bomb_t = input_data
 
     # define FY1 and M1
     FY1_init_position = DRONES_INITIAL["FY1"]
-    f1_V = np.array([f1_vx, 0, 0])
+    f1_V = np.array([f1_vx, f1_vy, 0])
 
     M1_init_position = MISSILES_INITIAL["M1"]
     M1_V = calculate_velocity_vector(M1_init_position, FAKE_TARGET, MISSILE_SPEED)
@@ -250,12 +250,12 @@ def Q3_cal_mask_time_optimized(input_data, num_samples=2000):
     Returns:
         float: 总遮蔽时间长度
     """
-    f1_vx, drop_t1, bomb_t1, drop_t2, bomb_t2, drop_t3, bomb_t3 = input_data
+    f1_vx, f1_vy, drop_t1, bomb_t1, drop_t2, bomb_t2, drop_t3, bomb_t3 = input_data
 
     # 计算三个烟幕弹的遮蔽区间
-    intervals1 = simgle_cal_mask_time_optimized((f1_vx, drop_t1, bomb_t1), num_samples)
-    intervals2 = simgle_cal_mask_time_optimized((f1_vx, drop_t2, bomb_t2), num_samples)
-    intervals3 = simgle_cal_mask_time_optimized((f1_vx, drop_t3, bomb_t3), num_samples)
+    intervals1 = simgle_cal_mask_time_optimized((f1_vx, f1_vy, drop_t1, bomb_t1), num_samples)
+    intervals2 = simgle_cal_mask_time_optimized((f1_vx, f1_vy, drop_t2, bomb_t2), num_samples)
+    intervals3 = simgle_cal_mask_time_optimized((f1_vx, f1_vy, drop_t3, bomb_t3), num_samples)
 
     # 合并所有区间
     all_intervals = intervals1 + intervals2 + intervals3
@@ -264,7 +264,7 @@ def Q3_cal_mask_time_optimized(input_data, num_samples=2000):
     return merge_intervals(all_intervals)
 
 
-vec_ueq = lambda x: 70.0 <= abs(x[0]) <= 140
+vec_ueq = lambda x: 70.0**2 <= x[0]**2 + x[1]**2 <= 140.0**2
 time_ueq = lambda x: x[0] <= x[1] and x[0] + x[1] <= 66.99917080747261
 
 Q3_constraint_ueq = lambda x: (
